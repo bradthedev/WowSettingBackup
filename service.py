@@ -20,14 +20,17 @@ from compression import CompressionManager
 
 class WoWBackupService:
     def __init__(self, config_file="config.json"):
-        self.config_file = config_file
+        # Use the directory where the executable/script is located
+        self.app_dir = Path(__file__).parent if hasattr(sys, '_MEIPASS') is False else Path(sys.executable).parent
+        self.config_file = self.app_dir / config_file if not os.path.isabs(config_file) else config_file
         self.running = False
         self.config = {}
         self.setup_logging()
         
     def setup_logging(self):
         """Setup logging to file"""
-        log_dir = Path("logs")
+        # Use the directory where the executable/script is located
+        log_dir = self.app_dir / "logs"
         log_dir.mkdir(exist_ok=True)
         
         # Create custom formatter without emojis for console
