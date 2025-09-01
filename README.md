@@ -33,7 +33,7 @@ pip install -r requirements.txt
 
 ```bash
 # GUI Application
-python main.py
+python WowAddonSync.py
 
 # Background Service Only (no GUI)
 python service.py
@@ -89,7 +89,7 @@ If 7z.exe is not found, the app will fall back to Python's built-in zipfile comp
 
 ## Usage
 
-1. Run `python main.py`
+1. Run `python WowAddonSync.py`
 2. Configure the paths in the GUI
 3. Click "Run Backup" to backup or "Restore Backup" to restore from a zip file
 4. View progress in the log area
@@ -144,16 +144,16 @@ If 7z.exe is not found, the app will fall back to Python's built-in zipfile comp
 
 ```bash
 pip install pyinstaller
-python -m pyinstaller --onefile main.py
+python -m pyinstaller --onefile WowAddonSync.py
 ```
 
-The executable will be in `dist/main.exe`
+The executable will be in `dist/WowAddonSync.exe`
 
 ### macOS
 
 ```bash
 pip install pyinstaller
-python -m pyinstaller --onefile --windowed main.py
+python -m pyinstaller --onefile --windowed WowAddonSync.py
 ```
 
 This creates a .app bundle. For a .dmg installer:
@@ -170,7 +170,7 @@ create-dmg --volname "WoW Backup Tool" --volicon icon.icns --window-pos 200 120 
 
 ```bash
 pip install pyinstaller
-python -m pyinstaller --onefile main.py
+python -m pyinstaller --onefile WowAddonSync.py
 ```
 
-The executable will be in `dist/main`
+The executable will be in `dist/WowAddonSync`
