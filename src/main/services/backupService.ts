@@ -30,11 +30,17 @@ export class BackupService {
   }
 
   async runBackup(progressCallback?: (progress: number, message: string) => void): Promise<void> {
-    return this.performBackup('manual', progressCallback);
+    const result = await this.performBackup('manual', progressCallback);
+    // Save last manual backup time
+    this.configService.updateLastBackupTime('manual');
+    return result;
   }
 
   async runScheduledBackup(progressCallback?: (progress: number, message: string) => void): Promise<void> {
-    return this.performBackup('scheduled', progressCallback);
+    const result = await this.performBackup('scheduled', progressCallback);
+    // Save last scheduled backup time
+    this.configService.updateLastBackupTime('scheduled');
+    return result;
   }
 
   private async performBackup(backupType: 'manual' | 'scheduled', progressCallback?: (progress: number, message: string) => void): Promise<void> {
@@ -81,7 +87,8 @@ export class BackupService {
         config.tempDir,
         backupPath,
         config.fastCompression,
-        progressCallback
+        progressCallback,
+        config.compressionLevel
       );
 
       // Clean up temp directory

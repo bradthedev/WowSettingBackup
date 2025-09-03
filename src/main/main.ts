@@ -241,7 +241,8 @@ ipcMain.handle('scheduler:stop', () => {
 ipcMain.handle('scheduler:status', () => {
   return {
     running: schedulerService.isRunning(),
-    nextRun: schedulerService.getNextRunTime()
+    nextRun: schedulerService.getNextRunTime(),
+    lastRun: schedulerService.getLastRunTime()
   };
 });
 
