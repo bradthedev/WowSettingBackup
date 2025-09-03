@@ -5,9 +5,17 @@ import path from 'path';
 import { LoggerService } from './loggerService';
 import node7z from 'node-7z';
 import yauzl from 'yauzl';
+import os from 'os';
 
 export class CompressionService {
   private logger: LoggerService;
+  private compressionLevels = {
+    'store': 0,     // No compression, fastest
+    'fastest': 1,   // Minimal compression
+    'fast': 3,      // Fast compression
+    'normal': 6,    // Balanced compression
+    'maximum': 9    // Maximum compression, slowest
+  };
 
   constructor(logger: LoggerService) {
     this.logger = logger;
@@ -17,50 +25,81 @@ export class CompressionService {
     sourceDir: string,
     outputPath: string,
     fastMode: boolean = true,
-    progressCallback?: (progress: number, message: string) => void
+    progressCallback?: (progress: number, message: string) => void,
+    compressionLevel?: 'store' | 'fastest' | 'fast' | 'normal' | 'maximum'
+  ): Promise<void> {
+    // Use optimized compression for Windows
+    if (process.platform === 'win32') {
+      return this.compressDirectoryOptimized(sourceDir, outputPath, fastMode, progressCallback, compressionLevel);
+    }
+    
+    return this.compressDirectoryStandard(sourceDir, outputPath, fastMode, progressCallback, compressionLevel);
+  }
+
+  private async compressDirectoryStandard(
+    sourceDir: string,
+    outputPath: string,
+    fastMode: boolean = true,
+    progressCallback?: (progress: number, message: string) => void,
+    compressionLevel?: 'store' | 'fastest' | 'fast' | 'normal' | 'maximum'
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       this.logger.info(`Starting compression of ${sourceDir}`);
       this.logger.debug(`Compression settings: Fast=${fastMode}, Output=${outputPath}`);
       
       const output = fs.createWriteStream(outputPath);
+      // Determine compression level
+      const level = compressionLevel 
+        ? this.compressionLevels[compressionLevel]
+        : (fastMode ? 1 : 6);
+      
       const archive = archiver('zip', {
         zlib: { 
-          level: fastMode ? 3 : 9 // Fast mode uses level 3, normal uses 9
-        }
+          level: level,
+          memLevel: level === 0 ? 9 : 8, // Higher memory level for store mode
+          strategy: level <= 1 ? 0 : 1 // 0 = default for fast, 1 = filtered for normal
+        },
+        store: level === 0 // Use store mode for level 0
       });
 
       let totalSize = 0;
       let processedSize = 0;
 
-      // Calculate total size for progress with error handling
-      const calculateTotalSize = (dir: string): number => {
+      // Calculate total size asynchronously for better performance
+      const calculateTotalSizeAsync = async (dir: string): Promise<number> => {
         let size = 0;
         try {
-          const files = fs.readdirSync(dir);
+          const files = await fs.promises.readdir(dir);
           
-          for (const file of files) {
+          const promises = files.map(async (file) => {
             const filePath = path.join(dir, file);
             try {
-              const stats = fs.statSync(filePath);
+              const stats = await fs.promises.stat(filePath);
               
               if (stats.isDirectory()) {
-                size += calculateTotalSize(filePath);
+                return await calculateTotalSizeAsync(filePath);
               } else {
-                size += stats.size;
+                return stats.size;
               }
             } catch (error) {
               this.logger.warn(`Skipping file ${filePath}: ${error}`);
-              // Continue with other files
+              return 0;
             }
-          }
+          });
+          
+          const sizes = await Promise.all(promises);
+          size = sizes.reduce((acc, s) => acc + s, 0);
         } catch (error) {
           this.logger.warn(`Failed to read directory ${dir}: ${error}`);
         }
         return size;
       };
 
-      totalSize = calculateTotalSize(sourceDir);
+      // Calculate size asynchronously but don't wait for it to start compression
+      calculateTotalSizeAsync(sourceDir).then(size => {
+        totalSize = size;
+        this.logger.debug(`Total size to compress: ${(size / 1024 / 1024).toFixed(2)} MB`);
+      });
 
       output.on('close', () => {
         const sizeInMB = (archive.pointer() / 1024 / 1024).toFixed(2);
@@ -357,15 +396,182 @@ export class CompressionService {
     }
   }
 
+  private async compressDirectoryOptimized(
+    sourceDir: string,
+    outputPath: string,
+    fastMode: boolean = true,
+    progressCallback?: (progress: number, message: string) => void,
+    compressionLevel?: 'store' | 'fastest' | 'fast' | 'normal' | 'maximum'
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.logger.info(`Starting optimized compression for Windows`);
+      this.logger.debug(`Compression settings: Fast=${fastMode}, Output=${outputPath}`);
+      
+      const output = fs.createWriteStream(outputPath);
+      
+      // Determine compression level with Windows optimizations
+      const level = compressionLevel 
+        ? this.compressionLevels[compressionLevel]
+        : (fastMode ? 0 : 3);
+      
+      // Use more aggressive settings for Windows
+      const archive = archiver('zip', {
+        zlib: { 
+          level: level,
+          memLevel: 9, // Maximum memory usage for better performance
+          windowBits: 15, // Maximum window size
+          chunkSize: 64 * 1024 // Larger chunk size for better throughput
+        },
+        highWaterMark: 32 * 1024 * 1024, // 32MB buffer for better performance
+        statConcurrency: os.cpus().length, // Use all CPU cores for stat operations
+        store: level === 0 // Use store mode for level 0
+      });
+
+      let totalSize = 0;
+      let processedSize = 0;
+
+      // Skip size calculation in fast mode for better performance
+      if (!fastMode) {
+        this.calculateTotalSizeParallel(sourceDir).then(size => {
+          totalSize = size;
+          this.logger.debug(`Total size to compress: ${(size / 1024 / 1024).toFixed(2)} MB`);
+        });
+      }
+
+      output.on('close', () => {
+        const sizeInMB = (archive.pointer() / 1024 / 1024).toFixed(2);
+        this.logger.info(`Optimized compression completed: ${sizeInMB} MB written`);
+        progressCallback?.(100, 'Compression completed');
+        resolve();
+      });
+
+      output.on('end', () => {
+        this.logger.debug('Data has been drained');
+      });
+
+      archive.on('warning', (err: any) => {
+        if (err.code === 'ENOENT') {
+          this.logger.warn(`Warning during compression: ${err}`);
+        } else {
+          reject(err);
+        }
+      });
+
+      archive.on('error', (err: any) => {
+        this.logger.error(`Compression error: ${err}`);
+        reject(err);
+      });
+
+      if (!fastMode) {
+        archive.on('progress', (progress: any) => {
+          processedSize = progress.fs.processedBytes;
+          if (totalSize > 0) {
+            const percentage = Math.round((processedSize / totalSize) * 100);
+            progressCallback?.(percentage, `Compressing: ${percentage}%`);
+          }
+        });
+      } else {
+        // In fast mode, use entry count for progress
+        let entryCount = 0;
+        archive.on('entry', () => {
+          entryCount++;
+          if (entryCount % 100 === 0) {
+            progressCallback?.(Math.min(90, Math.round(entryCount / 50)), `Processing files: ${entryCount}`);
+          }
+        });
+      }
+
+      archive.pipe(output);
+      
+      // Add directory with glob pattern to exclude unnecessary files
+      try {
+        archive.glob('**/*', {
+          cwd: sourceDir,
+          ignore: ['*.log', '*.tmp', 'Thumbs.db', '.DS_Store'],
+          dot: true,
+          follow: false
+        });
+        
+        archive.finalize();
+      } catch (archiveError) {
+        this.logger.error(`Archive creation error: ${archiveError}`);
+        reject(archiveError);
+      }
+    });
+  }
+
+  private async calculateTotalSizeParallel(dir: string): Promise<number> {
+    const cpuCount = os.cpus().length;
+    const workerPool: Promise<number>[] = [];
+    
+    const calculateBatch = async (paths: string[]): Promise<number> => {
+      let size = 0;
+      
+      for (const filePath of paths) {
+        try {
+          const stats = await fs.promises.stat(filePath);
+          if (stats.isFile()) {
+            size += stats.size;
+          }
+        } catch (error) {
+          // Skip errors
+        }
+      }
+      
+      return size;
+    };
+    
+    const getAllFiles = async (dir: string): Promise<string[]> => {
+      const files: string[] = [];
+      
+      const walk = async (currentDir: string) => {
+        try {
+          const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
+          
+          for (const entry of entries) {
+            const fullPath = path.join(currentDir, entry.name);
+            
+            if (entry.isDirectory()) {
+              await walk(fullPath);
+            } else {
+              files.push(fullPath);
+            }
+          }
+        } catch (error) {
+          // Skip inaccessible directories
+        }
+      };
+      
+      await walk(dir);
+      return files;
+    };
+    
+    const allFiles = await getAllFiles(dir);
+    const batchSize = Math.ceil(allFiles.length / cpuCount);
+    
+    for (let i = 0; i < cpuCount; i++) {
+      const start = i * batchSize;
+      const end = Math.min((i + 1) * batchSize, allFiles.length);
+      const batch = allFiles.slice(start, end);
+      
+      if (batch.length > 0) {
+        workerPool.push(calculateBatch(batch));
+      }
+    }
+    
+    const results = await Promise.all(workerPool);
+    return results.reduce((acc, size) => acc + size, 0);
+  }
+
   // Multi-threaded compression using worker threads
   async compressDirectoryMultiThreaded(
     sourceDir: string,
     outputPath: string,
     fastMode: boolean = true,
-    progressCallback?: (progress: number, message: string) => void
+    progressCallback?: (progress: number, message: string) => void,
+    compressionLevel?: 'store' | 'fastest' | 'fast' | 'normal' | 'maximum'
   ): Promise<void> {
-    // For now, use single-threaded compression
-    // Worker threads implementation would require separate worker files
-    return this.compressDirectory(sourceDir, outputPath, fastMode, progressCallback);
+    // Use optimized compression which includes parallel operations
+    return this.compressDirectory(sourceDir, outputPath, fastMode, progressCallback, compressionLevel);
   }
 }

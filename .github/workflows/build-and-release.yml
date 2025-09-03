@@ -105,41 +105,13 @@ jobs:
         id: create_release
         uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         with:
           tag_name: ${{ github.ref_name }}
           release_name: WoW Backup Manager ${{ github.ref_name }}
           draft: false
           prerelease: false
-          body: |
-            ## 🎉 WoW Backup Manager ${{ github.ref_name }}
-            
-            ### 📦 Downloads
-            
-            #### Windows
-            - **WoW Backup Manager Setup.exe** - Standard installer
-            - **WoW Backup Manager.exe** - Portable version
-            
-            #### macOS
-            - **WoW Backup Manager.dmg** - Intel Macs (x64)
-            - **WoW Backup Manager-arm64.dmg** - Apple Silicon Macs (M1/M2)
-            
-            #### Linux
-            - **WoW Backup Manager.AppImage** - Universal Linux
-            - **wow-backup-manager.deb** - Debian/Ubuntu package
-            
-            ### 📋 Installation Instructions
-            
-            1. Download the appropriate file for your operating system
-            2. Run the installer or extract the portable version
-            3. Configure your WoW installation path
-            4. Start backing up your addons and settings!
-            
-            ### 🔧 What's New
-            - See commit history for detailed changes
-            
-            ### 🐛 Issues & Support
-            If you encounter any issues, please report them on the [Issues page](https://github.com/bradthedev/WowSettingBackup/issues).
+          body_path: CHANGELOG.md
             
       - name: Upload Release Assets
         run: |
@@ -171,7 +143,7 @@ jobs:
             fi
           done
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
 
   auto-updater:
     needs: release
@@ -207,4 +179,4 @@ jobs:
             gh release upload ${{ github.ref_name }} latest-mac.yml --clobber
           fi
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}

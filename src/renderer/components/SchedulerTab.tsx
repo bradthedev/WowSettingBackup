@@ -12,6 +12,7 @@ const SchedulerTab: React.FC<SchedulerTabProps> = ({ config, onConfigChange, onS
   const [schedulerStatus, setSchedulerStatus] = useState<{
     running: boolean;
     nextRun?: Date;
+    lastRun?: Date;
   }>({ running: false });
   const [localConfig, setLocalConfig] = useState(config);
 
@@ -96,19 +97,62 @@ const SchedulerTab: React.FC<SchedulerTabProps> = ({ config, onConfigChange, onS
         <div className="grid md:grid-cols-2 gap-6">
           <div className="space-y-4">
             <div className={`p-4 rounded-lg ${schedulerStatus.running ? 'bg-green-900/20 border border-green-600/30' : 'bg-gray-900/20 border border-gray-600/30'}`}>
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-3">
                 <span className="text-sm font-medium">Status</span>
                 <span className={`px-2 py-1 rounded text-xs font-medium ${schedulerStatus.running ? 'bg-green-600 text-white' : 'bg-gray-600 text-gray-300'}`}>
                   {schedulerStatus.running ? 'Running' : 'Stopped'}
                 </span>
               </div>
+              
+              {schedulerStatus.lastRun && (
+                <div className="text-sm text-gray-400 mb-2">
+                  <div className="flex items-center space-x-2">
+                    <Clock size={14} />
+                    <span>Last backup: {(() => {
+                      try {
+                        const lastRun = new Date(schedulerStatus.lastRun);
+                        if (isNaN(lastRun.getTime())) return 'Never';
+                        
+                        const now = new Date();
+                        const diff = now.getTime() - lastRun.getTime();
+                        const hours = Math.floor(diff / (1000 * 60 * 60));
+                        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                        
+                        if (hours > 24) {
+                          const days = Math.floor(hours / 24);
+                          return `${days} day${days > 1 ? 's' : ''} ago`;
+                        } else if (hours > 0) {
+                          return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+                        } else if (minutes > 0) {
+                          return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+                        } else {
+                          return 'Just now';
+                        }
+                      } catch {
+                        return 'Never';
+                      }
+                    })()}</span>
+                  </div>
+                  <div className="mt-1 text-xs text-gray-500">
+                    {(() => {
+                      try {
+                        const lastRun = new Date(schedulerStatus.lastRun);
+                        return isNaN(lastRun.getTime()) ? '' : lastRun.toLocaleString();
+                      } catch {
+                        return '';
+                      }
+                    })()}
+                  </div>
+                </div>
+              )}
+              
               {schedulerStatus.running && schedulerStatus.nextRun && (
                 <div className="text-sm text-gray-400">
                   <div className="flex items-center space-x-2">
                     <Calendar size={14} />
                     <span>Next backup: {getNextRunText()}</span>
                   </div>
-                  <div className="mt-1 text-xs">
+                  <div className="mt-1 text-xs text-gray-500">
                     {(() => {
                       try {
                         const nextRun = new Date(schedulerStatus.nextRun);

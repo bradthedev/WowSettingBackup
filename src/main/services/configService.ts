@@ -10,6 +10,7 @@ export interface BackupConfig {
   backupRetention: number;
   verboseLogging: boolean;
   fastCompression: boolean;
+  compressionLevel: 'store' | 'fastest' | 'fast' | 'normal' | 'maximum';
   schedulerEnabled: boolean;
   scheduleInterval: number;
   scheduleUnit: 'minutes' | 'hours' | 'days';
@@ -17,6 +18,8 @@ export interface BackupConfig {
   runInBackground: boolean;
   use7zip: boolean;
   compressionThreads: number;
+  lastScheduledBackup?: string; // ISO date string
+  lastManualBackup?: string; // ISO date string
 }
 
 export class ConfigService {
@@ -51,13 +54,16 @@ export class ConfigService {
       backupRetention: 30,
       verboseLogging: false,
       fastCompression: true,
+      compressionLevel: 'fast',
       schedulerEnabled: false,
       scheduleInterval: 1,
       scheduleUnit: 'hours',
       minimizeToTray: true,
       runInBackground: true,
       use7zip: false,
-      compressionThreads: Math.min(16, os.cpus().length)
+      compressionThreads: Math.min(16, os.cpus().length),
+      lastScheduledBackup: undefined,
+      lastManualBackup: undefined
     };
   }
 
@@ -85,5 +91,29 @@ export class ConfigService {
 
   getConfigPath(): string {
     return this.store.path;
+  }
+
+  updateLastBackupTime(type: 'scheduled' | 'manual'): void {
+    const now = new Date().toISOString();
+    if (type === 'scheduled') {
+      this.setConfigValue('lastScheduledBackup', now);
+    } else {
+      this.setConfigValue('lastManualBackup', now);
+    }
+  }
+
+  getLastBackupTime(type: 'scheduled' | 'manual'): Date | null {
+    const timeStr = type === 'scheduled' 
+      ? this.getConfigValue('lastScheduledBackup')
+      : this.getConfigValue('lastManualBackup');
+    
+    if (!timeStr) return null;
+    
+    try {
+      const date = new Date(timeStr);
+      return isNaN(date.getTime()) ? null : date;
+    } catch {
+      return null;
+    }
   }
 }
