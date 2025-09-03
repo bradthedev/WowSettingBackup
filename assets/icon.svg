@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- WoW Backup Manager Icon -->
+  <!-- Shield background -->
+  <path d="M256 48C256 48 128 96 128 240C128 384 256 464 256 464C256 464 384 384 384 240C384 96 256 48 256 48Z" fill="#4fc3f7"/>
+  
+  <!-- W Letter -->
+  <path d="M160 160L192 320L224 200L256 320L288 200L320 320L352 160" stroke="white" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Backup arrow circle -->
+  <circle cx="256" cy="380" r="40" fill="#ff6f61"/>
+  <path d="M246 365L256 355L266 365M256 355V395M241 380C241 388.284 247.716 395 256 395C264.284 395 271 388.284 271 380" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
