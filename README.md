@@ -1,176 +1,191 @@
-# 🎮 WoW Backup Manager
+# WoW Backup Manager - TypeScript Electron App
 
-A modern, professional-grade backup solution for World of Warcraft addons and settings with automatic scheduling and background service capabilities.
-
-## ✨ Features
-
-- **🎨 Modern, clean GUI** with professional styling and intuitive layout
-- **⏰ Background scheduler service** - Runs independently, continues even when GUI is closed
-- **🚀 Ultra-fast operations** using robocopy (32 threads) and 7-Zip (16 threads)
-- **🔄 Automatic scheduling** - Set backups to run every X minutes/hours/days
-- **⚙️ Auto-save configuration** - All settings saved automatically as you change them
-- **📱 Smart minimize behavior** - Choose to minimize to taskbar or exit completely
-- **⚡ High-performance compression** using 7-Zip with multi-threading
-- **💾 Intelligent backup retention** - Keep last 30 days + latest per month
-- **🔧 Cross-platform support** (Windows, macOS, Linux)
-- **📊 Real-time progress tracking** with time remaining estimates
-- **📝 Detailed logging** with timestamps and emojis for easy reading
-- **🔄 Persistent configuration** - Auto-loads previous settings on startup
-
-## 🚀 Quick Start
-
-### Easy Installation
-
-```bash
-# Run the installer (Windows)
-install.bat
-
-# Or manually install
-pip install -r requirements.txt
-```
-
-### Launch Options
-
-```bash
-# GUI Application
-python WowAddonSync.py
-
-# Background Service Only (no GUI)
-python service.py
-
-# Test backup once
-python service.py test
-```
+A modern desktop application for backing up World of Warcraft addons and settings, built with TypeScript and Electron.
 
 ## Features
 
-- **Clean, modern GUI** with intuitive configuration
-- **Automatic background scheduler** - Set backups to run every X minutes/hours/days
-- Supports different WoW versions (_retail_, _classic_, etc.)
-- **Ultra-fast file operations using robocopy with multi-threading** (/MT:32)
-- **Ultra-fast compression using 7-Zip with 16 threads** (matches original batch file performance)
-- Automatic compression using built-in ZIP
-- **Fast compression option** - Choose between speed (larger files) or normal compression (smaller files)
-- Backup rotation to keep a specified number of recent backups
-- Restore from backup zip files
-- **Real-time scheduler status** showing next backup time
-- Real-time logging in the GUI with timestamps
-- Threaded execution to prevent UI freezing
-- Config saving/loading with scheduler preferences
-- Cross-platform (Windows, macOS, Linux)
-- Advanced progress bar with time remaining estimates
+- 🎮 **WoW Directory Detection**: Automatically finds your WoW installation
+- 💾 **Smart Backup**: Backs up Interface/AddOns and WTF folders
+- ⚡ **Fast Compression**: Uses 7z for efficient compression
+- 📅 **Scheduled Backups**: Automatic backups with cron-like scheduling
+- 🗂️ **Backup Management**: Automatic cleanup (30 days + monthly retention)
+- 🎯 **System Tray**: Minimize to tray with context menu
+- 🔄 **Progress Tracking**: Real-time backup/restore progress
+- ⚙️ **Configurable**: Customizable settings and preferences
 
-## Requirements
+## Development Setup
 
-- Python 3.x
-- Tkinter (usually included with Python)
+### Prerequisites
 
-## 7-Zip Integration (Windows Only)
+- Node.js 18+ (LTS recommended)
+- npm (comes with Node.js)
+- Windows (for 7z.exe integration)
 
-For **ultra-fast compression** on Windows, the app automatically detects and uses 7-Zip with the same high-performance settings as the original batch file:
+### Installation
 
-- **16-thread compression** (`-mmt=16`) for maximum speed
-- **Automatic detection** of 7-Zip in multiple locations:
-  - Local directory (`7z.exe`)
-  - Standard installation (`C:\Program Files\7-Zip\7z.exe`)
-  - 32-bit installation (`C:\Program Files (x86)\7-Zip\7z.exe`)
+```bash
+# Clone the repo and navigate to electron app
+cd C:\Repos\WowSettingBackup\electron-app
 
-### Automatic Setup
+# Install dependencies
+npm install
 
-Run `get_7z.bat` to automatically download and extract 7z.exe
+# Build TypeScript
+npm run build
 
-### Manual Setup
+# Start the app
+npm start
+```
 
-1. Download the 7-Zip portable version from https://www.7-zip.org/
-2. Extract `7z.exe` (and optionally `7z.dll`) to the WoWBackup directory
-3. The app will automatically detect and use 7-Zip for much faster compression
+### Development Scripts
 
-If 7z.exe is not found, the app will fall back to Python's built-in zipfile compression.
+```bash
+# Build TypeScript and start app
+npm start
 
-## Usage
+# Watch mode (rebuild on changes)
+npm run build:watch
 
-1. Run `python WowAddonSync.py`
-2. Configure the paths in the GUI
-3. Click "Run Backup" to backup or "Restore Backup" to restore from a zip file
-4. View progress in the log area
+# Development mode with live reload
+npm run dev
 
-## 📋 Configuration
+# Build for production
+npm run build
 
-| Setting                     | Description                                                             |
-| --------------------------- | ----------------------------------------------------------------------- |
-| **WoW Version**             | The WoW folder version (e.g., `_retail_`, `_classic_`, `_classic_era_`) |
-| **WoW Installation**        | Path to World of Warcraft installation directory                        |
-| **Temp Directory**          | Directory for temporary files during backup process                     |
-| **Backup Destination**      | Network share or local directory for final backup storage               |
-| **Backup Retention**        | Automatically keeps last 30 days + latest backup per month              |
-| **Verbose Logging**         | Enable detailed operation logging                                       |
-| **Fast Compression**        | Choose speed vs. file size (faster = larger files)                      |
-| **Enable Automatic Backup** | Turn on/off the background scheduler                                    |
-| **Schedule Interval**       | Run backup every X minutes/hours/days                                   |
+# Package the app (creates distributable)
+npm run pack
 
-### ⚙️ Auto-Save Configuration
+# Create installer
+npm run dist
+```
 
-- **Real-time saving**: All settings are automatically saved as you change them
-- **1-second debounce**: Prevents excessive saves while typing
-- **No manual save required**: Configuration persists immediately
-- **Automatic loading**: Previous settings restored when app restarts
-- **Manual save option**: "💾 Save Config" button still available for confirmation
+### PowerShell Helper Script
 
-## 🎯 Usage Modes
+You can also use the PowerShell script for easier development:
 
-### GUI Mode (Recommended)
+```powershell
+# Build and run
+.\run.ps1 -Build
 
-- Full-featured interface with real-time progress
-- Visual configuration and status monitoring
-- Smart minimize options when scheduler is active
-- Perfect for interactive use and initial setup
+# Development mode
+.\run.ps1 -Dev
 
-### Service Mode
+# Package for distribution
+.\run.ps1 -Pack
+```
 
-- Lightweight background process
-- Runs independently of GUI
-- Ideal for servers or always-on backup scheduling
-- Logs to `logs/service.log`
+## Architecture
 
-### Hybrid Mode
+### TypeScript Structure
 
-- Run GUI for configuration and monitoring
-- Background service handles automatic backups
-- Best of both worlds - convenience + reliability
+```
+src/
+├── main.ts              # Main Electron process
+├── types/               # TypeScript type definitions
+└── utils/               # Utility functions
 
-## Building Executable
+public/
+├── index.html          # Renderer HTML
+├── renderer.js         # Renderer process
+├── styles.css          # Application styles
+└── assets/             # Icons and images
+
+dist/                   # Compiled TypeScript output
+```
+
+### Key Classes
+
+- **WowBackupApp**: Main application class handling Electron lifecycle
+- **AppConfig**: Configuration management and persistence
+- **BackupInfo**: Backup metadata and information
+- **ProgressInfo**: Progress tracking for operations
+
+## Configuration
+
+The app stores its configuration in `%APPDATA%/wow-backup-manager/config.json`:
+
+```json
+{
+  "wowPath": "C:/Program Files (x86)/World of Warcraft",
+  "backupPath": "C:/Users/username/Documents/WoW Backups",
+  "autoBackup": true,
+  "backupSchedule": "0 0 * * *",
+  "keepDays": 30,
+  "compressionLevel": 5,
+  "includeAddons": true,
+  "includeWTF": true,
+  "minimizeToTray": true,
+  "startMinimized": false
+}
+```
+
+## Building for Distribution
 
 ### Windows
 
 ```bash
-pip install pyinstaller
-python -m pyinstaller --onefile WowAddonSync.py
+# Build installer
+npm run build:win
+
+# Output will be in dist-electron/
 ```
 
-The executable will be in `dist/WowAddonSync.exe`
+### Requirements for Distribution
 
-### macOS
+- The app includes `7z.exe` from the parent directory
+- Icons should be placed in `assets/icon.ico`
+- NSIS installer configuration is in `package.json` build section
+
+## TypeScript Benefits
+
+- **Type Safety**: Catch errors at compile time
+- **Better IDE Support**: IntelliSense, refactoring, navigation
+- **Modern JavaScript Features**: ES6+, async/await, modules
+- **Maintainable Code**: Strong typing makes code self-documenting
+- **Electron Integration**: Full typing for Electron APIs
+
+## Differences from Python Version
+
+### Advantages:
+- **Modern UI**: Web technologies for better UX
+- **Cross Platform**: Electron runs on Windows, Mac, Linux
+- **Better Performance**: V8 JavaScript engine optimization
+- **Rich Ecosystem**: npm packages for any functionality
+- **Live Development**: Hot reload and debugging tools
+
+### Migration Notes:
+- **Configuration**: JSON-based instead of Python pickle
+- **System Tray**: Native Electron tray integration
+- **File Operations**: Node.js fs-extra instead of Python shutil
+- **Compression**: Uses archiver package with 7z fallback
+- **Scheduling**: node-cron instead of Python threading
+
+## Troubleshooting
+
+### Common Issues
+
+1. **npm not found**: Make sure Node.js is installed and added to PATH
+2. **TypeScript errors**: Run `npm run build` to see compilation errors
+3. **7z.exe missing**: Ensure 7z.exe is in the parent directory
+4. **App won't start**: Check console output for errors
+
+### Debugging
 
 ```bash
-pip install pyinstaller
-python -m pyinstaller --onefile --windowed WowAddonSync.py
+# Run with debug output
+DEBUG=* npm start
+
+# Check compiled output
+node dist/main.js
 ```
 
-This creates a .app bundle. For a .dmg installer:
+## Contributing
 
-```bash
-# Install create-dmg
-brew install create-dmg
+1. Make changes to TypeScript source files in `src/`
+2. Test with `npm run build && npm start`
+3. Ensure no TypeScript compilation errors
+4. Test packaging with `npm run pack`
 
-# Create DMG after building
-create-dmg --volname "WoW Backup Tool" --volicon icon.icns --window-pos 200 120 --window-size 800 400 --icon-size 100 --icon "WoW Backup Tool.app" 200 190 --hide-extension "WoW Backup Tool.app" --app-drop-link 600 185 "WoW Backup Tool.dmg" "dist/"
-```
+## License
 
-### Linux
-
-```bash
-pip install pyinstaller
-python -m pyinstaller --onefile WowAddonSync.py
-```
-
-The executable will be in `dist/WowAddonSync`
+MIT License - see the parent directory for details.
