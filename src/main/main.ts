@@ -54,8 +54,6 @@ function createWindow() {
     mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
-    // Enable dev tools in production for debugging
-    mainWindow.webContents.openDevTools();
   }
 
   mainWindow.on('closed', () => {
