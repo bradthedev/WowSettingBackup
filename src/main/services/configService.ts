@@ -1,119 +1,118 @@
 import Store from 'electron-store';
-import path from 'path';
 import os from 'os';
+import path from 'path';
+import { randomUUID } from 'crypto';
+import fs from 'fs';
 
-export interface BackupConfig {
-  wowVersion: string;
+export interface AppConfig {
   wowPath: string;
-  tempDir: string;
+  wowVersion: '_retail_' | '_classic_' | '_classic_era_' | '_ptr_' | '_beta_';
   backupDir: string;
   backupRetention: number;
-  verboseLogging: boolean;
-  fastCompression: boolean;
-  compressionLevel: 'store' | 'fastest' | 'fast' | 'normal' | 'maximum';
+  compressionLevel: number;
   schedulerEnabled: boolean;
-  scheduleInterval: number;
-  scheduleUnit: 'minutes' | 'hours' | 'days';
+  schedulerIntervalMinutes: number;
+  syncRole: 'host' | 'slave' | 'none';
+  syncPort: number;
+  deviceId: string;
+  deviceName: string;
+  autoSyncOnConnect: boolean;
+  googleDriveEnabled: boolean;
+  googleDriveTokens?: { accessToken: string; refreshToken: string; expiryDate?: number };
+  dropboxEnabled: boolean;
+  dropboxTokens?: { accessToken: string; refreshToken: string; expiryDate?: number };
+  cloudBackupFolder: string;
   minimizeToTray: boolean;
-  runInBackground: boolean;
-  use7zip: boolean;
-  compressionThreads: number;
-  lastScheduledBackup?: string; // ISO date string
-  lastManualBackup?: string; // ISO date string
+  theme: 'dark';
+}
+
+function getDefaultWowPath(): string {
+  if (process.platform === 'darwin') {
+    return '/Applications/World of Warcraft/';
+  }
+  return 'C:\\Program Files (x86)\\World of Warcraft\\';
+}
+
+function getDefaultBackupDir(): string {
+  return path.join(os.homedir(), 'WoWBackups');
 }
 
 export class ConfigService {
-  private store: Store<BackupConfig>;
-  private defaultConfig: BackupConfig;
+  private store: Store<AppConfig>;
 
   constructor() {
-    this.store = new Store<BackupConfig>({
-      name: 'wow-backup-config',
-      defaults: this.getDefaultConfig()
+    this.store = new Store<AppConfig>({
+      name: 'wow-settings-backup-config',
+      defaults: {
+        wowPath: getDefaultWowPath(),
+        wowVersion: '_retail_',
+        backupDir: getDefaultBackupDir(),
+        backupRetention: 30,
+        compressionLevel: 1,
+        schedulerEnabled: false,
+        schedulerIntervalMinutes: 60,
+        syncRole: 'none',
+        syncPort: 9400,
+        deviceId: randomUUID(),
+        deviceName: os.hostname(),
+        autoSyncOnConnect: false,
+        googleDriveEnabled: false,
+        dropboxEnabled: false,
+        cloudBackupFolder: 'WoWSettingsBackup',
+        minimizeToTray: false,
+        theme: 'dark',
+      },
     });
-    this.defaultConfig = this.getDefaultConfig();
   }
 
-  private getDefaultConfig(): BackupConfig {
-    const platform = process.platform;
-    let defaultWowPath = '';
-    
-    if (platform === 'win32') {
-      defaultWowPath = 'C:\\Program Files (x86)\\World of Warcraft';
-    } else if (platform === 'darwin') {
-      defaultWowPath = '/Applications/World of Warcraft';
-    } else {
-      defaultWowPath = path.join(os.homedir(), 'Games', 'World of Warcraft');
-    }
-
-    return {
-      wowVersion: '_retail_',
-      wowPath: defaultWowPath,
-      tempDir: path.join(os.tmpdir(), 'wow-backup-temp'),
-      backupDir: path.join(os.homedir(), 'WoW-Backups'),
-      backupRetention: 30,
-      verboseLogging: false,
-      fastCompression: true,
-      compressionLevel: 'fast',
-      schedulerEnabled: false,
-      scheduleInterval: 1,
-      scheduleUnit: 'hours',
-      minimizeToTray: true,
-      runInBackground: true,
-      use7zip: false,
-      compressionThreads: Math.min(16, os.cpus().length),
-      lastScheduledBackup: undefined,
-      lastManualBackup: undefined
-    };
-  }
-
-  getConfig(): BackupConfig {
+  getAll(): AppConfig {
     return this.store.store;
   }
 
-  saveConfig(config: Partial<BackupConfig>): void {
-    const currentConfig = this.getConfig();
-    const newConfig = { ...currentConfig, ...config };
-    this.store.store = newConfig;
-  }
-
-  getConfigValue<K extends keyof BackupConfig>(key: K): BackupConfig[K] {
+  get<K extends keyof AppConfig>(key: K): AppConfig[K] {
     return this.store.get(key);
   }
 
-  setConfigValue<K extends keyof BackupConfig>(key: K, value: BackupConfig[K]): void {
+  set<K extends keyof AppConfig>(key: K, value: AppConfig[K]): void {
     this.store.set(key, value);
   }
 
-  resetConfig(): void {
-    this.store.store = this.defaultConfig;
+  update(partial: Partial<AppConfig>): void {
+    for (const [key, value] of Object.entries(partial)) {
+      if (value !== undefined) {
+        this.store.set(key as keyof AppConfig, value as AppConfig[keyof AppConfig]);
+      }
+    }
   }
 
-  getConfigPath(): string {
-    return this.store.path;
-  }
+  detectWowPath(): string | null {
+    const candidates: string[] = [];
 
-  updateLastBackupTime(type: 'scheduled' | 'manual'): void {
-    const now = new Date().toISOString();
-    if (type === 'scheduled') {
-      this.setConfigValue('lastScheduledBackup', now);
+    if (process.platform === 'darwin') {
+      candidates.push(
+        '/Applications/World of Warcraft/',
+        path.join(os.homedir(), 'Applications/World of Warcraft/'),
+      );
+    } else if (process.platform === 'win32') {
+      candidates.push(
+        'C:\\Program Files (x86)\\World of Warcraft\\',
+        'C:\\Program Files\\World of Warcraft\\',
+        'D:\\World of Warcraft\\',
+        'D:\\Games\\World of Warcraft\\',
+      );
     } else {
-      this.setConfigValue('lastManualBackup', now);
+      candidates.push(
+        path.join(os.homedir(), 'Games/World of Warcraft/'),
+        path.join(os.homedir(), '.wine/drive_c/Program Files (x86)/World of Warcraft/'),
+      );
     }
-  }
 
-  getLastBackupTime(type: 'scheduled' | 'manual'): Date | null {
-    const timeStr = type === 'scheduled' 
-      ? this.getConfigValue('lastScheduledBackup')
-      : this.getConfigValue('lastManualBackup');
-    
-    if (!timeStr) return null;
-    
-    try {
-      const date = new Date(timeStr);
-      return isNaN(date.getTime()) ? null : date;
-    } catch {
-      return null;
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
     }
+
+    return null;
   }
 }

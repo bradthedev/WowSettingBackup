@@ -1,321 +1,107 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Shield, 
-  Clock, 
-  HardDrive, 
-  Activity,
-  Calendar,
-  AlertTriangle,
-  CheckCircle,
-  Settings,
-  Play,
-  RotateCcw
-} from 'lucide-react';
-import { BackupConfig } from '../types';
+import React, { useState, useEffect, useCallback } from 'react';
+import type { BackupHistoryItem, AppConfig } from '../types';
 
-interface DashboardProps {
-  config: BackupConfig;
-  onShowNotification: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
-  setIsLoading: (loading: boolean) => void;
-  onNavigateToTab: (tabIndex: number) => void;
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleString();
 }
 
-interface SystemStatus {
-  lastBackup?: Date;
-  nextScheduledBackup?: Date;
-  backupCount: number;
-  totalBackups: number;
-  successfulBackups: number;
-  failedBackups: number;
-  totalSize: string;
-  diskSpace: {
-    used: string;
-    available: string;
-  };
-  wowInstallationValid: boolean;
-  schedulerRunning: boolean;
+function formatSize(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ 
-  config, 
-  onShowNotification, 
-  setIsLoading,
-  onNavigateToTab 
-}) => {
-  const [systemStatus, setSystemStatus] = useState<SystemStatus>({
-    backupCount: 0,
-    totalBackups: 0,
-    successfulBackups: 0,
-    failedBackups: 0,
-    totalSize: '0 B',
-    diskSpace: { used: '0 GB', available: '0 GB' },
-    wowInstallationValid: false,
-    schedulerRunning: false
-  });
+export function Dashboard(): React.ReactElement {
+  const [history, setHistory] = useState<BackupHistoryItem[]>([]);
+  const [config, setConfig] = useState<AppConfig | null>(null);
+  const [running, setRunning] = useState(false);
 
   useEffect(() => {
-    loadSystemStatus();
+    window.electronAPI.backup.getHistory().then(setHistory);
+    window.electronAPI.config.get().then(setConfig);
   }, []);
 
-  const loadSystemStatus = async () => {
+  const handleQuickBackup = useCallback(async () => {
+    setRunning(true);
     try {
-      // Get backup history stats
-      const stats = await window.electron.backupHistory.getStats();
-      
-      // Get scheduler status
-      const schedulerStatus = await window.electron.scheduler.getStatus();
-      
-      // Check WoW installation validity
-      const wowPathValid = config.wowPath && config.wowPath.length > 0;
-      
-      // Calculate disk space (simplified - would need actual disk space API)
-      const diskSpace = {
-        used: stats.totalSizeFormatted || '0 B',
-        available: 'N/A' // Would need actual disk space calculation
-      };
-      
-      setSystemStatus({
-        backupCount: stats.totalBackups,
-        totalBackups: stats.totalBackups,
-        successfulBackups: stats.successfulBackups,
-        failedBackups: stats.failedBackups,
-        totalSize: stats.totalSizeFormatted,
-        diskSpace,
-        wowInstallationValid: wowPathValid,
-        schedulerRunning: schedulerStatus.running,
-        lastBackup: stats.lastBackupDate ? new Date(stats.lastBackupDate) : undefined,
-        nextScheduledBackup: schedulerStatus.nextRun ? new Date(schedulerStatus.nextRun) : undefined
-      });
-    } catch (error) {
-      console.error('Failed to load system status:', error);
-      onShowNotification('Failed to load system status', 'error');
-    }
-  };
-
-  const handleQuickBackup = async () => {
-    setIsLoading(true);
-    try {
-      const result = await window.electron.backup.run();
-      if (result.success) {
-        onShowNotification('Quick backup completed successfully!', 'success');
-        loadSystemStatus(); // Refresh status
-      } else {
-        onShowNotification(result.error || 'Backup failed', 'error');
-      }
-    } catch (error) {
-      onShowNotification('Failed to run backup', 'error');
+      await window.electronAPI.backup.run();
+      const updatedHistory = await window.electronAPI.backup.getHistory();
+      setHistory(updatedHistory);
     } finally {
-      setIsLoading(false);
+      setRunning(false);
     }
-  };
+  }, []);
 
-  const getStatusColor = () => {
-    if (!systemStatus.wowInstallationValid) return 'text-red-400';
-    if (!systemStatus.lastBackup) return 'text-yellow-400';
-    const daysSinceBackup = systemStatus.lastBackup ? 
-      Math.floor((Date.now() - systemStatus.lastBackup.getTime()) / (1000 * 60 * 60 * 24)) : 999;
-    if (daysSinceBackup > 7) return 'text-yellow-400';
-    return 'text-green-400';
-  };
-
-  const getStatusMessage = () => {
-    if (!systemStatus.wowInstallationValid) return 'WoW installation not found';
-    if (!systemStatus.lastBackup) return 'No backups created yet';
-    const daysSinceBackup = systemStatus.lastBackup ? 
-      Math.floor((Date.now() - systemStatus.lastBackup.getTime()) / (1000 * 60 * 60 * 24)) : 999;
-    if (daysSinceBackup === 0) return 'Backed up today';
-    if (daysSinceBackup === 1) return 'Last backup yesterday';
-    if (daysSinceBackup > 7) return `Last backup ${daysSinceBackup} days ago`;
-    return `Last backup ${daysSinceBackup} days ago`;
-  };
+  const lastBackup = history.find((h) => h.status === 'success');
+  const totalBackups = history.filter((h) => h.status === 'success').length;
+  const totalSize = history.filter((h) => h.status === 'success').reduce((sum, h) => sum + h.size, 0);
 
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="text-center space-y-2">
-        <h1 className="text-3xl font-bold">WoW Backup Manager</h1>
-        <p className="text-gray-400">Protect your World of Warcraft addons and settings</p>
-      </div>
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold text-wow-gold">Dashboard</h1>
 
-      {/* Status Overview */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold flex items-center">
-            <Activity className="mr-3 text-wow-blue" size={24} />
-            System Status
-          </h2>
-          <div className={`flex items-center space-x-2 ${getStatusColor()}`}>
-            {systemStatus.wowInstallationValid && systemStatus.lastBackup ? 
-              <CheckCircle size={20} /> : 
-              <AlertTriangle size={20} />
-            }
-            <span className="font-medium">{getStatusMessage()}</span>
-          </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="card">
+          <h3 className="text-sm font-medium text-wow-text-muted mb-1">Last Backup</h3>
+          <p className="text-lg text-wow-text">
+            {lastBackup ? formatDate(lastBackup.date) : 'No backups yet'}
+          </p>
+          {lastBackup && (
+            <p className="text-xs text-wow-text-muted mt-1">{lastBackup.name}</p>
+          )}
         </div>
 
-        <div className="grid md:grid-cols-5 gap-4">
-          <div className="bg-dark-bg rounded-lg p-4 text-center">
-            <Shield className="mx-auto mb-2 text-wow-blue" size={24} />
-            <div className="text-2xl font-bold">{systemStatus.totalBackups}</div>
-            <div className="text-sm text-gray-400">Total Backups</div>
-          </div>
-          
-          <div className="bg-dark-bg rounded-lg p-4 text-center">
-            <CheckCircle className="mx-auto mb-2 text-green-400" size={24} />
-            <div className="text-2xl font-bold">{systemStatus.successfulBackups}</div>
-            <div className="text-sm text-gray-400">Successful</div>
-          </div>
-          
-          <div className="bg-dark-bg rounded-lg p-4 text-center">
-            <AlertTriangle className="mx-auto mb-2 text-red-400" size={24} />
-            <div className="text-2xl font-bold">{systemStatus.failedBackups}</div>
-            <div className="text-sm text-gray-400">Failed</div>
-          </div>
-          
-          <div className="bg-dark-bg rounded-lg p-4 text-center">
-            <HardDrive className="mx-auto mb-2 text-purple-400" size={24} />
-            <div className="text-lg font-bold">{systemStatus.totalSize}</div>
-            <div className="text-sm text-gray-400">Storage Used</div>
-          </div>
-          
-          <div className="bg-dark-bg rounded-lg p-4 text-center">
-            <Calendar className="mx-auto mb-2 text-yellow-400" size={24} />
-            <div className="text-lg font-bold">
-              {systemStatus.lastBackup ? 
-                systemStatus.lastBackup.toLocaleDateString() : 
-                'Never'
-              }
-            </div>
-            <div className="text-sm text-gray-400">Last Backup</div>
-          </div>
+        <div className="card">
+          <h3 className="text-sm font-medium text-wow-text-muted mb-1">Total Backups</h3>
+          <p className="text-lg text-wow-text">{totalBackups}</p>
+          <p className="text-xs text-wow-text-muted mt-1">
+            {totalSize > 0 ? `${formatSize(totalSize)} total` : 'No data'}
+          </p>
         </div>
-        
-        {/* Additional Status Row */}
-        <div className="grid md:grid-cols-2 gap-4 mt-4">
-          <div className="bg-dark-bg rounded-lg p-4 text-center">
-            <Clock className="mx-auto mb-2 text-blue-400" size={24} />
-            <div className="text-lg font-bold">
-              {systemStatus.nextScheduledBackup ? 
-                systemStatus.nextScheduledBackup.toLocaleDateString() : 
-                'Not Scheduled'
-              }
-            </div>
-            <div className="text-sm text-gray-400">Next Backup</div>
-          </div>
-          
-          <div className="bg-dark-bg rounded-lg p-4 text-center">
-            <Activity className={`mx-auto mb-2 ${systemStatus.schedulerRunning ? 'text-green-400' : 'text-gray-400'}`} size={24} />
-            <div className="text-lg font-bold">
-              {systemStatus.schedulerRunning ? 'Running' : 'Stopped'}
-            </div>
-            <div className="text-sm text-gray-400">Auto Backup</div>
-          </div>
+
+        <div className="card">
+          <h3 className="text-sm font-medium text-wow-text-muted mb-1">Sync Status</h3>
+          <p className="text-lg text-wow-text">
+            {config?.syncRole === 'none' ? 'Not configured' : config?.syncRole ?? 'Loading...'}
+          </p>
+          <p className="text-xs text-wow-text-muted mt-1">
+            {config?.wowVersion?.replace(/_/g, '') ?? ''}
+          </p>
         </div>
       </div>
 
-      {/* Quick Actions */}
       <div className="card">
-        <h2 className="text-xl font-semibold mb-6">Quick Actions</h2>
-        <div className="grid md:grid-cols-2 gap-4">
-          <button
-            onClick={handleQuickBackup}
-            className="group bg-gradient-to-r from-wow-blue to-wow-blue-dark rounded-lg p-6 text-left transition-all hover:shadow-lg hover:shadow-wow-blue/20"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center mb-2">
-                  <Play className="mr-2" size={20} />
-                  <h3 className="font-semibold">Create Backup</h3>
+        <h3 className="text-sm font-medium text-wow-text-muted mb-3">Quick Actions</h3>
+        <div className="flex gap-3">
+          <button onClick={handleQuickBackup} className="btn-primary" disabled={running}>
+            {running ? 'Creating...' : 'Create Backup'}
+          </button>
+        </div>
+      </div>
+
+      {history.length > 0 && (
+        <div className="card">
+          <h3 className="text-sm font-medium text-wow-text-muted mb-3">Recent Backups</h3>
+          <div className="space-y-2">
+            {history.slice(0, 5).map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center justify-between py-2 border-b border-wow-border last:border-0"
+              >
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${item.status === 'success' ? 'bg-green-500' : 'bg-red-500'}`} />
+                  <span className="text-sm text-wow-text">{item.name}</span>
                 </div>
-                <p className="text-sm text-blue-100">
-                  Backup your addons and settings now
-                </p>
-              </div>
-              <div className="bg-white/20 rounded-full p-2 group-hover:bg-white/30 transition-colors">
-                <Play size={16} />
-              </div>
-            </div>
-          </button>
-
-          <button
-            onClick={() => onNavigateToTab(1)}
-            className="group bg-gradient-to-r from-green-600 to-green-700 rounded-lg p-6 text-left transition-all hover:shadow-lg hover:shadow-green-500/20"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center mb-2">
-                  <RotateCcw className="mr-2" size={20} />
-                  <h3 className="font-semibold">Restore Backup</h3>
+                <div className="flex gap-4 text-xs text-wow-text-muted">
+                  <span>{formatSize(item.size)}</span>
+                  <span>{formatDate(item.date)}</span>
                 </div>
-                <p className="text-sm text-green-100">
-                  Restore from previous backup
-                </p>
               </div>
-              <div className="bg-white/20 rounded-full p-2 group-hover:bg-white/30 transition-colors">
-                <RotateCcw size={16} />
-              </div>
-            </div>
-          </button>
-        </div>
-      </div>
-
-      {/* Configuration Status */}
-      <div className="card">
-        <h2 className="text-xl font-semibold mb-6 flex items-center">
-          <Settings className="mr-3 text-wow-blue" size={24} />
-          Configuration Status
-        </h2>
-        <div className="space-y-3">
-          <div className="flex items-center justify-between p-3 bg-dark-bg rounded-lg">
-            <div className="flex items-center">
-              {systemStatus.wowInstallationValid ? (
-                <CheckCircle className="mr-3 text-green-400" size={18} />
-              ) : (
-                <AlertTriangle className="mr-3 text-red-400" size={18} />
-              )}
-              <span>WoW Installation Path</span>
-            </div>
-            <span className="text-sm text-gray-400 font-mono">
-              {config.wowPath || 'Not set'}
-            </span>
-          </div>
-          
-          <div className="flex items-center justify-between p-3 bg-dark-bg rounded-lg">
-            <div className="flex items-center">
-              <CheckCircle className="mr-3 text-green-400" size={18} />
-              <span>Backup Directory</span>
-            </div>
-            <span className="text-sm text-gray-400 font-mono">
-              {config.backupDir || 'Not set'}
-            </span>
-          </div>
-          
-          <div className="flex items-center justify-between p-3 bg-dark-bg rounded-lg">
-            <div className="flex items-center">
-              {config.schedulerEnabled ? (
-                <CheckCircle className="mr-3 text-green-400" size={18} />
-              ) : (
-                <AlertTriangle className="mr-3 text-yellow-400" size={18} />
-              )}
-              <span>Automatic Backups</span>
-            </div>
-            <span className="text-sm text-gray-400">
-              {config.schedulerEnabled ? 'Enabled' : 'Disabled'}
-            </span>
+            ))}
           </div>
         </div>
-
-        <div className="mt-4 pt-4 border-t border-dark-border">
-          <button
-            onClick={() => onNavigateToTab(0)}
-            className="btn-secondary w-full"
-          >
-            Configure Settings
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
-};
-
-export default Dashboard;
+}
