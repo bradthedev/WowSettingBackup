@@ -1,135 +1,102 @@
 import winston from 'winston';
+import DailyRotateFile from 'winston-daily-rotate-file';
 import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
-import { ConfigService } from './configService';
+
+export interface LogEntry {
+  timestamp: string;
+  level: string;
+  message: string;
+  meta?: string;
+}
 
 export class LoggerService {
   private logger: winston.Logger;
   private logDir: string;
-  private logFile: string;
-  private configService?: ConfigService;
 
-  constructor(configService?: ConfigService) {
-    this.configService = configService;
+  constructor() {
     this.logDir = path.join(app.getPath('userData'), 'logs');
-    this.ensureLogDirectory();
-    
-    const date = new Date().toISOString().split('T')[0];
-    this.logFile = path.join(this.logDir, `backup-${date}.log`);
+    const logDir = this.logDir;
 
-    this.logger = winston.createLogger({
-      level: this.getLogLevel(),
+    const transport = new DailyRotateFile({
+      dirname: logDir,
+      filename: 'wow-backup-%DATE%.log',
+      datePattern: 'YYYY-MM-DD',
+      maxSize: '5m',
+      maxFiles: 5,
       format: winston.format.combine(
         winston.format.timestamp(),
-        winston.format.printf(({ timestamp, level, message }) => {
-          return `[${timestamp}] ${level.toUpperCase()}: ${message}`;
-        })
+        winston.format.json(),
       ),
+    });
+
+    this.logger = winston.createLogger({
+      level: 'info',
       transports: [
-        new winston.transports.File({ 
-          filename: this.logFile,
-          maxsize: 5242880, // 5MB
-          maxFiles: 5
-        }),
+        transport,
         new winston.transports.Console({
           format: winston.format.combine(
             winston.format.colorize(),
-            winston.format.simple()
-          )
-        })
-      ]
+            winston.format.timestamp({ format: 'HH:mm:ss' }),
+            winston.format.printf(({ timestamp, level, message, ...meta }) => {
+              const metaStr = Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : '';
+              return `${timestamp} ${level}: ${message}${metaStr}`;
+            }),
+          ),
+        }),
+      ],
     });
   }
 
-  private ensureLogDirectory(): void {
-    if (!fs.existsSync(this.logDir)) {
-      fs.mkdirSync(this.logDir, { recursive: true });
-    }
+  info(message: string, meta?: Record<string, unknown>): void {
+    this.logger.info(message, meta);
   }
 
-  log(level: string, message: string, ...meta: any[]): void {
-    this.logger.log(level, message, ...meta);
+  warn(message: string, meta?: Record<string, unknown>): void {
+    this.logger.warn(message, meta);
   }
 
-  info(message: string, ...meta: any[]): void {
-    this.logger.info(message, ...meta);
+  error(message: string, meta?: Record<string, unknown>): void {
+    this.logger.error(message, meta);
   }
 
-  warn(message: string, ...meta: any[]): void {
-    this.logger.warn(message, ...meta);
+  debug(message: string, meta?: Record<string, unknown>): void {
+    this.logger.debug(message, meta);
   }
 
-  error(message: string, ...meta: any[]): void {
-    this.logger.error(message, ...meta);
-  }
-
-  debug(message: string, ...meta: any[]): void {
-    this.logger.debug(message, ...meta);
-  }
-
-  verbose(message: string, ...meta: any[]): void {
-    this.logger.verbose(message, ...meta);
-  }
-
-  silly(message: string, ...meta: any[]): void {
-    this.logger.silly(message, ...meta);
-  }
-
-  getLogPath(): string {
-    return this.logDir;
-  }
-
-  getRecentLogs(lines: number = 100): string[] {
+  readRecentLogs(maxLines: number = 200): LogEntry[] {
     try {
-      if (!fs.existsSync(this.logFile)) {
-        return [];
-      }
+      const files = fs.readdirSync(this.logDir)
+        .filter((f) => f.endsWith('.log'))
+        .sort()
+        .reverse();
 
-      const content = fs.readFileSync(this.logFile, 'utf-8');
-      const allLines = content.split('\n').filter(line => line.trim());
-      
-      return allLines.slice(-lines);
-    } catch (error) {
-      this.error(`Failed to read logs: ${error}`);
+      if (files.length === 0) return [];
+
+      const content = fs.readFileSync(path.join(this.logDir, files[0]), 'utf-8');
+      const lines = content.trim().split('\n').slice(-maxLines);
+
+      return lines.map((line) => {
+        try {
+          const parsed = JSON.parse(line) as { timestamp?: string; level?: string; message?: string };
+          const { timestamp, level, message, ...rest } = parsed;
+          return {
+            timestamp: timestamp ?? new Date().toISOString(),
+            level: level ?? 'info',
+            message: message ?? line,
+            meta: Object.keys(rest).length > 0 ? JSON.stringify(rest) : undefined,
+          };
+        } catch {
+          return { timestamp: new Date().toISOString(), level: 'info', message: line };
+        }
+      });
+    } catch {
       return [];
     }
   }
 
-  clearLogs(): void {
-    try {
-      const files = fs.readdirSync(this.logDir);
-      files.forEach(file => {
-        if (file.endsWith('.log')) {
-          fs.unlinkSync(path.join(this.logDir, file));
-        }
-      });
-      this.info('Logs cleared successfully');
-    } catch (error) {
-      this.error(`Failed to clear logs: ${error}`);
-    }
-  }
-
-  private getLogLevel(): string {
-    if (!this.configService) {
-      return 'info';
-    }
-    
-    const config = this.configService.getConfig();
-    return config.verboseLogging ? 'debug' : 'info';
-  }
-
-  updateLogLevel(): void {
-    const newLevel = this.getLogLevel();
-    this.logger.level = newLevel;
-    this.info(`Log level updated to: ${newLevel}`);
-  }
-
-  isDebugEnabled(): boolean {
-    return this.logger.level === 'debug' || this.logger.level === 'verbose' || this.logger.level === 'silly';
-  }
-
-  isVerboseEnabled(): boolean {
-    return this.logger.level === 'verbose' || this.logger.level === 'silly';
+  getLogDir(): string {
+    return this.logDir;
   }
 }

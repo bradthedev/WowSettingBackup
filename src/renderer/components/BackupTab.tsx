@@ -1,161 +1,163 @@
-import React, { useState } from 'react';
-import { Play, RotateCcw, FolderOpen, Archive } from 'lucide-react';
-import { BackupConfig } from '../types';
+import React, { useState, useEffect, useCallback } from 'react';
+import type { BackupHistoryItem, BackupResult } from '../types';
 
-interface BackupTabProps {
-  config: BackupConfig;
-  onShowNotification: (message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
-  setIsLoading: (loading: boolean) => void;
+function formatSize(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
 }
 
-const BackupTab: React.FC<BackupTabProps> = ({ config, onShowNotification, setIsLoading }) => {
-  const [selectedBackup, setSelectedBackup] = useState<string>('');
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
 
-  const handleRunBackup = async () => {
-    setIsLoading(true);
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleString();
+}
+
+export function BackupTab(): React.ReactElement {
+  const [history, setHistory] = useState<BackupHistoryItem[]>([]);
+  const [progress, setProgress] = useState<{ value: number; message: string } | null>(null);
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<BackupResult | null>(null);
+
+  const loadHistory = useCallback(async () => {
+    const items = await window.electronAPI.backup.getHistory();
+    setHistory(items);
+  }, []);
+
+  useEffect(() => {
+    loadHistory();
+    const unsub = window.electronAPI.onProgressUpdate((value, message) => {
+      setProgress({ value, message });
+    });
+    return unsub;
+  }, [loadHistory]);
+
+  const handleBackup = useCallback(async () => {
+    setRunning(true);
+    setResult(null);
+    setProgress({ value: 0, message: 'Starting...' });
     try {
-      const result = await window.electron.backup.run();
-      if (result.success) {
-        onShowNotification('Backup completed successfully!', 'success');
-      } else {
-        onShowNotification(result.error || 'Backup failed', 'error');
-      }
-    } catch (error) {
-      onShowNotification('Failed to run backup', 'error');
+      const res = await window.electronAPI.backup.run();
+      setResult(res);
+      await loadHistory();
     } finally {
-      setIsLoading(false);
+      setRunning(false);
+      setProgress(null);
     }
-  };
+  }, [loadHistory]);
 
-  const handleSelectBackupFile = async () => {
-    const file = await window.electron.dialog.selectFile([
-      { name: 'Backup Files', extensions: ['zip'] }
-    ]);
-    if (file) {
-      setSelectedBackup(file);
-    }
-  };
-
-  const handleRestore = async () => {
-    if (!selectedBackup) {
-      onShowNotification('Please select a backup file first', 'warning');
+  const handleRestore = useCallback(async (backupPath: string) => {
+    if (!confirm('This will overwrite your current WoW settings. A pre-restore backup will be created. Continue?')) {
       return;
     }
-
-    setIsLoading(true);
+    setRunning(true);
+    setResult(null);
+    setProgress({ value: 0, message: 'Starting restore...' });
     try {
-      const result = await window.electron.backup.restore(selectedBackup);
-      if (result.success) {
-        onShowNotification('Restore completed successfully!', 'success');
-      } else {
-        onShowNotification(result.error || 'Restore failed', 'error');
-      }
-    } catch (error) {
-      onShowNotification('Failed to restore backup', 'error');
+      const res = await window.electronAPI.backup.restore(backupPath);
+      setResult({ success: res.success, message: res.message, duration: res.duration });
+      await loadHistory();
     } finally {
-      setIsLoading(false);
+      setRunning(false);
+      setProgress(null);
     }
-  };
+  }, [loadHistory]);
+
+  const handleDelete = useCallback(async (id: string) => {
+    await window.electronAPI.backup.deleteHistory(id);
+    await loadHistory();
+  }, [loadHistory]);
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold text-wow-gold">Backup</h1>
+
+      {/* Actions */}
       <div className="card">
-        <h2 className="text-2xl font-semibold mb-6 flex items-center">
-          <Archive className="mr-3 text-wow-blue" size={28} />
-          Backup Operations
-        </h2>
-        
-        <div className="grid md:grid-cols-2 gap-6">
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">Create Backup</h3>
-            <p className="text-sm text-gray-400">
-              Create a new backup of your WoW addons and settings. This will backup:
-            </p>
-            <ul className="list-disc list-inside text-sm text-gray-400 space-y-1">
-              <li>Interface folder (Addons)</li>
-              <li>WTF folder (Settings)</li>
-              <li>Screenshots folder</li>
-            </ul>
-            <div className="pt-2">
-              <button
-                onClick={handleRunBackup}
-                className="btn-primary flex items-center space-x-2 w-full justify-center"
-              >
-                <Play size={18} />
-                <span>Run Backup Now</span>
-              </button>
+        <div className="flex items-center gap-4">
+          <button onClick={handleBackup} className="btn-primary" disabled={running}>
+            {running ? 'Working...' : 'Create Backup'}
+          </button>
+        </div>
+
+        {progress && (
+          <div className="mt-4">
+            <div className="flex justify-between text-sm text-wow-text-muted mb-1">
+              <span>{progress.message}</span>
+              <span>{Math.round(progress.value)}%</span>
+            </div>
+            <div className="w-full bg-wow-dark rounded-full h-2">
+              <div
+                className="bg-wow-blue-light h-2 rounded-full transition-all duration-300"
+                style={{ width: `${progress.value}%` }}
+              />
             </div>
           </div>
+        )}
 
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">Restore Backup</h3>
-            <p className="text-sm text-gray-400">
-              Restore your WoW addons and settings from a previous backup.
-            </p>
-            <div className="space-y-3">
-              <div>
-                <label className="label">Select Backup File</label>
-                <div className="flex space-x-2">
-                  <input
-                    type="text"
-                    value={selectedBackup}
-                    readOnly
-                    className="input-field"
-                    placeholder="No file selected"
-                  />
+        {result && (
+          <div className={`mt-4 px-4 py-2 rounded-lg text-sm ${
+            result.success ? 'bg-green-900/30 text-green-400 border border-green-800' : 'bg-red-900/30 text-red-400 border border-red-800'
+          }`}>
+            {result.message}
+            {result.duration && ` (${formatDuration(result.duration)})`}
+          </div>
+        )}
+      </div>
+
+      {/* History */}
+      <div className="card">
+        <h2 className="text-lg font-semibold text-wow-text mb-4">Backup History</h2>
+        {history.length === 0 ? (
+          <p className="text-wow-text-muted text-sm">No backups yet. Create your first backup above.</p>
+        ) : (
+          <div className="space-y-2">
+            {history.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center justify-between p-3 bg-wow-dark rounded-lg border border-wow-border"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${item.status === 'success' ? 'bg-green-500' : 'bg-red-500'}`} />
+                    <span className="text-sm text-wow-text truncate">{item.name}</span>
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-wow-dark-lighter text-wow-text-muted">
+                      {item.type}
+                    </span>
+                  </div>
+                  <div className="flex gap-4 mt-1 text-xs text-wow-text-muted">
+                    <span>{formatDate(item.date)}</span>
+                    <span>{formatSize(item.size)}</span>
+                    <span>{formatDuration(item.duration)}</span>
+                  </div>
+                </div>
+                <div className="flex gap-2 ml-4">
+                  {item.status === 'success' && (
+                    <button
+                      onClick={() => handleRestore(item.path)}
+                      className="btn-secondary text-xs"
+                      disabled={running}
+                    >
+                      Restore
+                    </button>
+                  )}
                   <button
-                    onClick={handleSelectBackupFile}
-                    className="btn-secondary flex items-center"
+                    onClick={() => handleDelete(item.id)}
+                    className="text-xs px-2 py-1 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded transition-colors"
+                    disabled={running}
                   >
-                    <FolderOpen size={18} />
+                    Delete
                   </button>
                 </div>
               </div>
-              <button
-                onClick={handleRestore}
-                className="btn-success flex items-center space-x-2 w-full justify-center"
-                disabled={!selectedBackup}
-              >
-                <RotateCcw size={18} />
-                <span>Restore Backup</span>
-              </button>
-            </div>
+            ))}
           </div>
-        </div>
-      </div>
-
-      <div className="card">
-        <h3 className="text-lg font-medium mb-4">Current Configuration</h3>
-        <div className="grid md:grid-cols-2 gap-4 text-sm">
-          <div>
-            <span className="text-gray-400">WoW Version:</span>
-            <span className="ml-2">{config.wowVersion}</span>
-          </div>
-          <div>
-            <span className="text-gray-400">Backup Location:</span>
-            <span className="ml-2 text-xs">{config.backupDir}</span>
-          </div>
-          <div>
-            <span className="text-gray-400">Compression:</span>
-            <span className="ml-2">{config.fastCompression ? 'Fast' : 'Normal'}</span>
-          </div>
-          <div>
-            <span className="text-gray-400">Retention:</span>
-            <span className="ml-2">{config.backupRetention} days</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="card bg-yellow-900/20 border-yellow-600/30">
-        <h3 className="text-lg font-medium mb-2 text-yellow-500">Important Notes</h3>
-        <ul className="text-sm text-gray-400 space-y-1">
-          <li>• Ensure WoW is closed before running backup or restore operations</li>
-          <li>• Backups older than {config.backupRetention} days will be automatically deleted</li>
-          <li>• Existing files will be backed up before restore (with .backup extension)</li>
-        </ul>
+        )}
       </div>
     </div>
   );
-};
-
-export default BackupTab;
+}
