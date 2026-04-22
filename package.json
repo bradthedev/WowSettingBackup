@@ -1,66 +1,65 @@
 {
   "name": "wow-settings-backup",
-  "version": "2.0.0",
-  "description": "Cross-platform WoW settings backup, sync, and cloud storage manager",
-  "main": "dist/main/main.js",
-  "scripts": {
-    "dev": "vite",
-    "build": "tsc -p tsconfig.main.json && vite build",
-    "dist": "npm run build && electron-builder",
-    "typecheck": "tsc --noEmit"
-  },
-  "author": "Bradley Collins",
+  "version": "0.1.0",
+  "description": "Backup, sync, and restore World of Warcraft AddOns across machines via an SMB share.",
+  "main": "dist/main/index.js",
+  "author": "",
   "license": "MIT",
-  "devDependencies": {
-    "@types/node": "^20.10.0",
-    "@types/react": "^18.2.40",
-    "@types/react-dom": "^18.2.17",
-    "@types/ws": "^8.5.10",
-    "@vitejs/plugin-react": "^4.2.1",
-    "autoprefixer": "^10.4.16",
-    "electron": "^27.1.3",
-    "electron-builder": "^24.9.1",
-    "postcss": "^8.4.32",
-    "tailwindcss": "^3.3.6",
-    "typescript": "^5.3.2",
-    "vite": "^5.0.7",
-    "vite-plugin-electron": "^0.28.0",
-    "vite-plugin-electron-renderer": "^0.14.5"
+  "scripts": {
+    "predev": "npm run build:main",
+    "dev": "concurrently -k -n vite,tsc,electron -c cyan,yellow,magenta \"npm:dev:renderer\" \"npm:dev:main\" \"npm:dev:electron\"",
+    "dev:renderer": "vite",
+    "dev:main": "tsc -p tsconfig.main.json --watch --preserveWatchOutput",
+    "dev:electron": "wait-on tcp:5173 file:dist/main/index.js file:dist/preload/index.js && cross-env NODE_ENV=development electron .",
+    "build": "npm run build:renderer && npm run build:main",
+    "build:renderer": "vite build",
+    "build:main": "tsc -p tsconfig.main.json",
+    "start": "npm run build && electron .",
+    "package": "npm run build && electron-builder"
   },
   "dependencies": {
-    "bonjour-service": "^1.2.1",
-    "dropbox": "^10.34.0",
-    "electron-store": "^8.1.0",
-    "googleapis": "^129.0.0",
-    "lz4-napi": "^2.7.1",
+    "archiver": "^7.0.1",
+    "electron-store": "^8.2.0",
+    "extract-zip": "^2.0.1"
+  },
+  "devDependencies": {
+    "@types/archiver": "^6.0.2",
+    "@types/node": "^20.12.0",
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "tar-stream": "^3.1.6",
-    "winston": "^3.11.0",
-    "winston-daily-rotate-file": "^4.7.1",
-    "ws": "^8.14.2"
+    "typescript": "^5.4.5",
+    "vite": "^5.2.0",
+    "wait-on": "^7.2.0"
   },
   "build": {
-    "appId": "com.wowbackup.settings",
+    "appId": "com.wowsettingbackup.app",
     "productName": "WoW Settings Backup",
     "directories": {
       "output": "release"
     },
     "files": [
       "dist/**/*",
-      "assets/**/*"
+      "package.json"
     ],
     "mac": {
-      "icon": "assets/icon.icns",
-      "target": ["dmg"]
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] }
+      ],
+      "category": "public.app-category.utilities",
+      "identity": null
     },
     "win": {
-      "icon": "assets/icon.ico",
-      "target": ["nsis"]
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ]
     },
-    "linux": {
-      "icon": "assets/icon.png",
-      "target": ["AppImage", "deb", "rpm"]
-    }
+    "linux": { "target": "AppImage" }
   }
 }
