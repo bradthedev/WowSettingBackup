@@ -76,6 +76,7 @@ export async function writeLocalMeta(
     entryCount?: number;
     note?: string;
     createdAtIso?: string;
+    sha256?: string;
   }
 ): Promise<BackupMeta> {
   const stat = await fs.promises.stat(zipAbsPath);
@@ -84,7 +85,7 @@ export async function writeLocalMeta(
     file: path.basename(zipAbsPath),
     flavor: inferFlavorFromName(path.basename(zipAbsPath)),
     sizeBytes: stat.size,
-    sha256: await sha256OfFile(zipAbsPath),
+    sha256: opts.sha256 ?? await sha256OfFile(zipAbsPath),
     entryCount: opts.entryCount,
     createdAtIso: opts.createdAtIso ?? stat.mtime.toISOString(),
     source: getMachineInfo(),

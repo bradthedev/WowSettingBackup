@@ -58,8 +58,12 @@
     "win": {
       "target": [
         { "target": "nsis", "arch": ["x64"] }
-      ]
+      ],
+      "signingHashAlgorithms": [],
+      "sign": null
     },
-    "linux": { "target": "AppImage" }
+    "linux": {
+      "target": "AppImage"
+    }
   }
 }

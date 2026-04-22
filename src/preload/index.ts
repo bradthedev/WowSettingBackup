@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type {
   AppConfig,
   BackupFile,
+  BackupRunResult,
   BackupMeta,
   MountStatus,
   ProgressEvent,
@@ -17,7 +18,7 @@ const api = {
   pickDirectory: (title?: string): Promise<string | null> =>
     ipcRenderer.invoke('dialog:pickDirectory', title),
 
-  runBackup: (flavors: WowFlavor[]): Promise<BackupFile[]> =>
+  runBackup: (flavors: WowFlavor[]): Promise<BackupRunResult> =>
     ipcRenderer.invoke('backup:run', flavors),
   listLocalBackups: (): Promise<BackupFile[]> =>
     ipcRenderer.invoke('backup:listLocal'),

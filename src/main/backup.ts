@@ -1,13 +1,20 @@
 import archiver from 'archiver';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { BackupFile, WowFlavor } from '../shared/types';
+import type {
+  BackupError,
+  BackupFile,
+  BackupRunResult,
+  WowFlavor
+} from '../shared/types';
 import { WOW_FLAVORS } from '../shared/types';
 import { loadConfig } from './config';
 import { emitProgress, newProgressId } from './progress';
 import { metaPathFor, readMeta, writeLocalMeta } from './metadata';
 
 const BACKUP_PREFIX = 'wow-addons';
+const activeBackupTargets = new Set<string>();
 
 function timestamp(): string {
   const d = new Date();
@@ -73,6 +80,14 @@ export async function listBackupsWithMeta(dir: string): Promise<BackupFile[]> {
   );
 }
 
+export function isBackupPathInProgress(absPath: string): boolean {
+  return activeBackupTargets.has(path.resolve(absPath));
+}
+
+function shouldSkipArchiveEntry(entryName: string): boolean {
+  return /(^|\/)(\.git|node_modules)(\/|$)/.test(entryName);
+}
+
 /**
  * Remove a directory tree safely on all platforms.
  * Windows fs.rm can fail on deep trees / long paths / antivirus locks,
@@ -103,31 +118,34 @@ async function _rmdirRecursive(dir: string): Promise<void> {
 }
 
 async function zipDirectory(
-  sourceDir: string,
+  flavor: WowFlavor,
+  addonsDir: string,
+  wtfDir: string | null,
   outPath: string,
   progressId: string,
   label: string
-): Promise<{ entryCount: number }> {
+): Promise<{ entryCount: number; sha256: string }> {
   await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
   let entryCount = 0;
 
   return new Promise((resolve, reject) => {
     const output = fs.createWriteStream(outPath);
     const archive = archiver('zip', { zlib: { level: 6 } });
+    const hash = crypto.createHash('sha256');
     let completed = false;
 
-    function finish(err?: ErrnoException) {
+    function finish(err: unknown = null) {
       if (completed) return;
       completed = true;
-      // Destroy archiver to release its streams
-      archive.finalized() || archive.abort();
       // Destroy the write stream to free the file handle
       if (!output.destroyed) output.destroy();
       if (err) return reject(err);
-      return resolve();
+      return resolve({ entryCount, sha256: hash.digest('hex') });
     }
 
+    output.on('finish', () => finish());
     output.on('close', () => finish());
+    output.on('error', (err) => finish(err));
     archive.on('warning', (err) => {
       if (err.code !== 'ENOENT') finish(err);
     });
@@ -144,9 +162,25 @@ async function zipDirectory(
         message: `${processed}/${total} entries`
       });
     });
+    archive.on('data', (chunk) => {
+      hash.update(chunk);
+    });
 
     archive.pipe(output);
-    archive.directory(sourceDir, path.basename(sourceDir));
+    archive.directory(addonsDir, `${flavor}/AddOns`, (entry) => {
+      if (shouldSkipArchiveEntry(entry.name)) {
+        return false;
+      }
+      return entry;
+    });
+    if (wtfDir) {
+      archive.directory(wtfDir, `${flavor}/WTF`, (entry) => {
+        if (shouldSkipArchiveEntry(entry.name)) {
+          return false;
+        }
+        return entry;
+      });
+    }
     archive.finalize();
   });
 }
@@ -171,31 +205,34 @@ function pruneBackups(dir: string, flavor: WowFlavor, keep: number): void {
   }
 }
 
-async function copyDirRecursive(src: string, dst: string): Promise<void> {
-  await fs.promises.mkdir(dst, { recursive: true });
-  const entries = await fs.promises.readdir(src, { withFileTypes: true });
-  for (const entry of entries) {
-    const srcPath = path.join(src, entry.name);
-    const dstPath = path.join(dst, entry.name);
-    if (entry.isDirectory()) {
-      // Skip node_modules, .git, etc.
-      if (entry.name === 'node_modules' || entry.name === '.git') continue;
-      await copyDirRecursive(srcPath, dstPath);
-    } else {
-      await fs.promises.copyFile(srcPath, dstPath);
-    }
-  }
-}
-
-export async function runBackup(flavors: WowFlavor[]): Promise<BackupFile[]> {
+export async function runBackup(flavors: WowFlavor[]): Promise<BackupRunResult> {
   const cfg = loadConfig();
   const results: BackupFile[] = [];
+  const errors: BackupError[] = [];
+
+  if (!fs.existsSync(cfg.wowInstallRoot)) {
+    const message = `WoW install root does not exist: ${cfg.wowInstallRoot}`;
+    for (const flavor of flavors) {
+      const id = newProgressId();
+      const label = 'Backing up ' + flavor;
+      emitProgress({ id, phase: 'error', label, message });
+      errors.push({ flavor, message });
+    }
+    return { created: results, errors };
+  }
+
+  await fs.promises.mkdir(cfg.localBackupDir, { recursive: true });
 
   for (const flavor of flavors) {
     const addonsDir = addonsDirFor(cfg.wowInstallRoot, flavor);
     const wtfDir = wtfDirFor(cfg.wowInstallRoot, flavor);
     if (!fs.existsSync(addonsDir)) {
-      console.warn(`Skipping ${flavor}: no AddOns folder at ${addonsDir}`);
+      const message = `Missing AddOns folder: ${addonsDir}`;
+      const id = newProgressId();
+      const label = 'Backing up ' + flavor;
+      console.warn(`Skipping ${flavor}: ${message}`);
+      emitProgress({ id, phase: 'error', label, message });
+      errors.push({ flavor, message });
       continue;
     }
 
@@ -203,46 +240,32 @@ export async function runBackup(flavors: WowFlavor[]): Promise<BackupFile[]> {
     const label = 'Backing up ' + flavor;
     emitProgress({ id, phase: 'start', label });
 
-    const stagingRoot = path.join(
-      cfg.localBackupDir,
-      '.staging_' + flavor + '_' + Date.now()
-    );
-    const renamedStaging = path.join(cfg.localBackupDir, '.pkg_' + flavor);
+    const outName = BACKUP_PREFIX + '_' + flavor + '_' + timestamp() + '.zip';
+    const outPath = path.join(cfg.localBackupDir, outName);
+    const tempOutPath = `${outPath}.partial`;
+    activeBackupTargets.add(path.resolve(outPath));
     try {
-      // Clean previous staging dir if it exists (from a crashed run).
-      if (fs.existsSync(stagingRoot)) {
-        await rmdirTree(stagingRoot);
+      // Keep incomplete backups hidden from listings and uploads until the zip is finished.
+      if (fs.existsSync(tempOutPath)) {
+        await fs.promises.unlink(tempOutPath).catch(() => {});
       }
 
-      // Stage AddOns + WTF into one folder for the zip.
-      await fs.promises.mkdir(stagingRoot, { recursive: true });
-      const addonDst = path.join(stagingRoot, 'AddOns');
-      // Use readdir + copyFile for better compatibility than fs.cp on some setups.
-      await copyDirRecursive(addonsDir, addonDst);
-
-      if (fs.existsSync(wtfDir)) {
-        await copyDirRecursive(wtfDir, path.join(stagingRoot, 'WTF'));
-      }
-
-      const outName = BACKUP_PREFIX + '_' + flavor + '_' + timestamp() + '.zip';
-      const outPath = path.join(cfg.localBackupDir, outName);
-
-      // Rename staging to the name archiver will use as top-level in zip.
-      if (fs.existsSync(renamedStaging)) {
-        await rmdirTree(renamedStaging);
-      }
-      await fs.promises.rename(stagingRoot, renamedStaging);
-
-      const { entryCount } = await zipDirectory(renamedStaging, outPath, id, label);
-
-      // Cleanup staging.
-      await rmdirTree(renamedStaging);
+      const { entryCount, sha256 } = await zipDirectory(
+        flavor,
+        addonsDir,
+        fs.existsSync(wtfDir) ? wtfDir : null,
+        tempOutPath,
+        id,
+        label
+      );
+      await fs.promises.rename(tempOutPath, outPath);
 
       // Write sidecar metadata for this backup.
       try {
         await writeLocalMeta(outPath, {
           wowInstallRoot: cfg.wowInstallRoot,
-          entryCount
+          entryCount,
+          sha256
         });
       } catch (metaErr) {
         console.warn('Failed to write metadata sidecar:', metaErr);
@@ -253,22 +276,22 @@ export async function runBackup(flavors: WowFlavor[]): Promise<BackupFile[]> {
       emitProgress({ id, phase: 'done', label, ratio: 1 });
       results.push(toBackupFile(outPath));
     } catch (err) {
+      const message = (err as Error).message;
       console.error('Backup failed for ' + flavor + ':', err);
       emitProgress({
         id,
         phase: 'error',
         label,
-        message: (err as Error).message
+        message
       });
-      // cleanup staging
-      if (fs.existsSync(stagingRoot)) {
-        await rmdirTree(stagingRoot).catch(() => {});
+      errors.push({ flavor, message });
+      if (fs.existsSync(tempOutPath)) {
+        await fs.promises.unlink(tempOutPath).catch(() => {});
       }
-      if (fs.existsSync(renamedStaging)) {
-        await rmdirTree(renamedStaging).catch(() => {});
-      }
+    } finally {
+      activeBackupTargets.delete(path.resolve(outPath));
     }
   }
 
-  return results;
+  return { created: results, errors };
 }

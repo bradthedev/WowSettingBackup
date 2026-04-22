@@ -26,11 +26,12 @@ export function UploadView({ mounted }: { mounted: boolean }): JSX.Element {
   }, [mounted]);
 
   const remoteNames = new Set(remote.map((r) => r.name));
+  const uploadable = local.filter((b) => b.name.endsWith('.zip'));
 
   async function uploadAll(): Promise<void> {
     setBusy(true);
     try {
-      for (const b of local) {
+      for (const b of uploadable) {
         if (!remoteNames.has(b.name)) {
           await window.api.uploadBackup(b.path);
         }
@@ -67,7 +68,7 @@ export function UploadView({ mounted }: { mounted: boolean }): JSX.Element {
         <div className="row">
           <button
             className="primary"
-            disabled={!mounted || busy || local.length === 0}
+            disabled={!mounted || busy || uploadable.length === 0}
             onClick={uploadAll}
           >
             {busy ? 'Uploading…' : 'Upload all missing'}

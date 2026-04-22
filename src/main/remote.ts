@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { BackupFile } from '../shared/types';
 import { loadConfig } from './config';
-import { listBackupsWithMeta } from './backup';
+import { isBackupPathInProgress, listBackupsWithMeta } from './backup';
 import { mountStatus } from './smb';
 import { emitProgress, newProgressId } from './progress';
 import {
@@ -69,6 +69,12 @@ async function copySmall(src: string, dst: string): Promise<void> {
 export async function uploadBackup(absLocalPath: string): Promise<void> {
   const mp = await ensureRemoteReady();
   const cfg = loadConfig();
+  if (!absLocalPath.endsWith('.zip')) {
+    throw new Error('Only completed backup .zip files can be uploaded.');
+  }
+  if (isBackupPathInProgress(absLocalPath)) {
+    throw new Error('This backup is still being created. Wait for it to finish before uploading.');
+  }
   if (!fs.existsSync(absLocalPath)) {
     throw new Error(`Local file not found: ${absLocalPath}`);
   }

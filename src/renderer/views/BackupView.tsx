@@ -51,19 +51,24 @@ export function BackupView({
       await window.api.setConfig({ enabledFlavors: selection });
       await onConfigChange();
       const result = await window.api.runBackup(selection);
-      if (result.length === 0 && selection.length > 0) {
-        await refresh();
-        lastError = 'No backups were created. Check the logs above for details.';
-      } else {
-        await refresh();
+      await refresh();
+      if (result.errors.length > 0) {
+        lastError = result.errors
+          .map((e) => `${e.flavor}: ${e.message}`)
+          .join('\n');
+        if (result.created.length > 0) {
+          lastError = `Some backups failed:\n\n${lastError}`;
+        }
+      } else if (result.created.length === 0 && selection.length > 0) {
+        lastError = 'No backups were created.';
       }
     } catch (err) {
       lastError = (err as Error).message;
-      alert(`Backup failed:\n\n${lastError}`);
     } finally {
       setRunning(false);
     }
     if (lastError) {
+      alert(`Backup failed:\n\n${lastError}`);
       setBackups(await window.api.listLocalBackups());
       console.error('Backup error:', lastError);
     }
@@ -173,16 +178,23 @@ export function BackupView({
                       <td className="row" style={{ justifyContent: 'flex-end' }}>
                         <button
                           className="small"
+                          disabled={running}
                           onClick={() => window.api.showInFolder(b.path)}
                           title="Reveal in Finder/Explorer"
                         >
                           Reveal
                         </button>
-                        <button className="small" onClick={() => upload(b.path)}>
+                        <button
+                          className="small"
+                          disabled={running}
+                          onClick={() => upload(b.path)}
+                          title={running ? 'Wait for the current backup to finish' : undefined}
+                        >
                           Upload
                         </button>
                         <button
                           className="small danger"
+                          disabled={running}
                           onClick={() => del(b.path)}
                         >
                           Delete
