@@ -44,7 +44,8 @@ export function defaultConfig(): AppConfig {
       username: '',
       password: '',
       mountPoint: defaultMountPoint(),
-      autoMountOnLaunch: false
+      autoMountOnLaunch: false,
+      autoUploadAfterBackup: false
     }
   };
 }

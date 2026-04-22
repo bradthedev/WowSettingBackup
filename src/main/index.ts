@@ -58,9 +58,41 @@ function registerIpc(): void {
     return res.filePaths[0];
   });
 
-  ipcMain.handle('backup:run', (_e, flavors: WowFlavor[]) =>
-    runBackup(flavors)
-  );
+  ipcMain.handle('backup:run', async (_e, flavors: WowFlavor[]) => {
+    const result = await runBackup(flavors);
+    const cfg = loadConfig();
+    if (!cfg.smb.autoUploadAfterBackup || result.created.length === 0) {
+      return result;
+    }
+
+    const status = await mountStatus();
+    const mount = status.mounted ? status : await mountShare();
+    if (!mount.mounted) {
+      return {
+        ...result,
+        errors: [
+          ...result.errors,
+          {
+            flavor: 'unknown',
+            message: `Auto-upload failed: ${mount.message ?? 'remote share is not mounted.'}`
+          }
+        ]
+      };
+    }
+
+    for (const backup of result.created) {
+      try {
+        await uploadBackup(backup.path);
+      } catch (err) {
+        result.errors.push({
+          flavor: backup.flavor,
+          message: `Auto-upload failed: ${(err as Error).message}`
+        });
+      }
+    }
+
+    return result;
+  });
   ipcMain.handle('backup:listLocal', () => {
     const cfg = loadConfig();
     if (!fs.existsSync(cfg.localBackupDir)) {
