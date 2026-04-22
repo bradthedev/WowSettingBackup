@@ -54,6 +54,16 @@ export interface BackupFile {
   meta?: BackupMeta;
 }
 
+export interface BackupError {
+  flavor: WowFlavor;
+  message: string;
+}
+
+export interface BackupRunResult {
+  created: BackupFile[];
+  errors: BackupError[];
+}
+
 export interface MachineInfo {
   hostname: string;
   username: string;
