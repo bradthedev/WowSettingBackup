@@ -27,6 +27,8 @@ export interface SmbMountConfig {
   mountPoint?: string;
   /** Auto-mount on app start */
   autoMountOnLaunch: boolean;
+  /** Auto-upload newly created backups after a backup completes. */
+  autoUploadAfterBackup: boolean;
 }
 
 export interface AppConfig {
@@ -55,7 +57,7 @@ export interface BackupFile {
 }
 
 export interface BackupError {
-  flavor: WowFlavor;
+  flavor: WowFlavor | 'unknown';
   message: string;
 }
 

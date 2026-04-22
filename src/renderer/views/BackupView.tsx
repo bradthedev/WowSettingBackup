@@ -124,6 +124,9 @@ export function BackupView({
           </button>
           <span className="muted">
             Keeps the last {config.retentionCount} backups per flavor.
+            {config.smb.autoUploadAfterBackup
+              ? ' New backups will also auto-upload to the remote share.'
+              : ''}
           </span>
         </div>
       </div>

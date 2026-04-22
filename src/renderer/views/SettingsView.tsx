@@ -211,6 +211,22 @@ export function SettingsView({
           </label>
         </div>
 
+        <div className="checkbox-row">
+          <label>
+            <input
+              type="checkbox"
+              checked={draft.smb.autoUploadAfterBackup}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  smb: { ...draft.smb, autoUploadAfterBackup: e.target.checked }
+                })
+              }
+            />
+            Auto-upload new backups to the mounted share after backup completes
+          </label>
+        </div>
+
         <div className="row" style={{ marginTop: 12 }}>
           <button
             onClick={testMount}
