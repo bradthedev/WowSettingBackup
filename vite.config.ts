@@ -1,59 +1,22 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import electron from 'vite-plugin-electron';
-import electronRenderer from 'vite-plugin-electron-renderer';
-import path from 'path';
-
-const projectRoot = __dirname;
+import path from 'node:path';
 
 export default defineConfig({
-  plugins: [
-    react(),
-    electron([
-      {
-        entry: path.resolve(projectRoot, 'src/main/main.ts'),
-        vite: {
-          build: {
-            outDir: path.resolve(projectRoot, 'dist/main'),
-            rollupOptions: {
-              external: [
-                'electron',
-                'electron-store',
-                'winston',
-                'winston-daily-rotate-file',
-                'lz4-napi',
-                'tar-stream',
-                'ws',
-                'bonjour-service',
-                'googleapis',
-                'dropbox',
-              ],
-            },
-          },
-        },
-      },
-      {
-        entry: path.resolve(projectRoot, 'src/preload.ts'),
-        vite: {
-          build: {
-            outDir: path.resolve(projectRoot, 'dist'),
-          },
-        },
-        onstart(args) {
-          args.reload();
-        },
-      },
-    ]),
-    electronRenderer(),
-  ],
+  root: 'src/renderer',
+  base: './',
+  plugins: [react()],
   resolve: {
     alias: {
-      '@renderer': path.resolve(projectRoot, 'src/renderer'),
-    },
+      '@shared': path.resolve(__dirname, 'src/shared')
+    }
   },
-  root: path.resolve(projectRoot, 'src/renderer'),
+  server: {
+    port: 5173,
+    strictPort: true
+  },
   build: {
-    outDir: path.resolve(projectRoot, 'dist/renderer'),
-    emptyOutDir: true,
-  },
+    outDir: path.resolve(__dirname, 'dist/renderer'),
+    emptyOutDir: true
+  }
 });
