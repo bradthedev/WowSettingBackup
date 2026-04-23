@@ -68,7 +68,13 @@
         }
       ],
       "category": "public.app-category.utilities",
-      "identity": null
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": {
+        "teamId": "7EHJED96A6"
+      }
     },
     "win": {
       "target": [
