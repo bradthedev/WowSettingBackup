@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -11,19 +11,64 @@ import { rebuildIndex } from './metadata';
 import { startScheduler, updateScheduler, getSchedulerStatus, runScheduledBackupNow } from './scheduler';
 import { checkRemoteSync, applySyncBackup, dismissSyncBackup } from './sync';
 import { setupTray } from './tray';
-import type { AppConfig, SyncAvailableInfo, WowFlavor } from '../shared/types';
+import type { AppConfig, SyncAvailableInfo, ThemePreference, WowFlavor } from '../shared/types';
 
 const isDev = process.env.NODE_ENV === 'development';
 
 let mainWindow: BrowserWindow | null = null;
 
+/** Resolve a theme preference ('system' follows OS) to either 'dark' or 'light'. */
+function resolveTheme(pref: ThemePreference): 'dark' | 'light' {
+  if (pref === 'system') {
+    return nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+  }
+  return pref;
+}
+
+/** Apply the resolved theme to the main window's native vibrancy + push to renderer. */
+function applyTheme(pref: ThemePreference): void {
+  const resolved = resolveTheme(pref);
+  nativeTheme.themeSource = pref === 'system' ? 'system' : pref;
+  if (mainWindow) {
+    if (process.platform === 'darwin') {
+      // `sidebar` vibrancy looks clean in both light + dark modes on macOS.
+      mainWindow.setVibrancy('sidebar');
+    } else if (process.platform === 'win32') {
+      try {
+        // Windows 11 acrylic / mica — graceful no-op on older Windows.
+        (mainWindow as BrowserWindow & {
+          setBackgroundMaterial?: (m: 'auto' | 'none' | 'mica' | 'acrylic' | 'tabbed') => void;
+        }).setBackgroundMaterial?.('acrylic');
+      } catch {
+        /* ignore */
+      }
+    }
+    mainWindow.webContents.send('theme:resolved', resolved);
+  }
+}
+
 async function createWindow(): Promise<void> {
+  const cfg = loadConfig();
+  const isMac = process.platform === 'darwin';
+  const isWin = process.platform === 'win32';
+
   mainWindow = new BrowserWindow({
     width: 1100,
     height: 760,
     minWidth: 900,
     minHeight: 600,
     title: 'WoW Settings Backup',
+    // Fullbleed glass look: let the content extend under the titlebar on macOS
+    // and Windows. The renderer adds a small top inset so controls are reachable.
+    titleBarStyle: isMac ? 'hiddenInset' : isWin ? 'hidden' : 'default',
+    titleBarOverlay: isWin
+      ? { color: '#00000000', symbolColor: '#ffffff', height: 32 }
+      : false,
+    trafficLightPosition: isMac ? { x: 14, y: 14 } : undefined,
+    backgroundColor: '#00000000',
+    vibrancy: isMac ? 'sidebar' : undefined,
+    backgroundMaterial: isWin ? 'acrylic' : undefined,
+    transparent: isMac,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -45,6 +90,14 @@ async function createWindow(): Promise<void> {
     }
   });
 
+  // Re-emit the resolved theme whenever the OS appearance changes so the
+  // renderer can swap palettes live when the preference is 'system'.
+  nativeTheme.on('updated', () => {
+    if (!mainWindow) return;
+    const currentPref = loadConfig().theme;
+    mainWindow.webContents.send('theme:resolved', resolveTheme(currentPref));
+  });
+
   if (isDev) {
     await mainWindow.loadURL('http://localhost:5173/');
     mainWindow.webContents.openDevTools({ mode: 'detach' });
@@ -53,6 +106,11 @@ async function createWindow(): Promise<void> {
       path.join(__dirname, '../renderer/index.html')
     );
   }
+
+  // Apply the saved theme after the page has loaded so the first paint is right.
+  mainWindow.webContents.once('did-finish-load', () => {
+    applyTheme(cfg.theme);
+  });
 }
 
 function registerIpc(): void {
@@ -63,6 +121,8 @@ function registerIpc(): void {
     updateScheduler();
     // Restart the sync timer so interval changes take effect immediately
     restartRemoteSyncTimer();
+    // Re-apply theme so vibrancy + renderer palette pick up preference changes.
+    applyTheme(cfg.theme);
     return cfg;
   });
 

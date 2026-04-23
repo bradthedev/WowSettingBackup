@@ -16,10 +16,29 @@ export function formatDate(iso: string): string {
   }
 }
 
-export function Empty({ children }: { children: React.ReactNode }): JSX.Element {
+export function Empty({
+  children,
+  icon = '○'
+}: {
+  children: React.ReactNode;
+  icon?: string;
+}): JSX.Element {
   return (
-    <div className="muted" style={{ padding: 16, textAlign: 'center' }}>
-      {children}
+    <div className="empty">
+      <div className="empty__icon" aria-hidden>
+        {icon}
+      </div>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+export function Skeleton({ rows = 3 }: { rows?: number }): JSX.Element {
+  return (
+    <div aria-busy="true">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="skeleton skeleton--row" />
+      ))}
     </div>
   );
 }

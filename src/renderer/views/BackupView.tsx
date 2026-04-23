@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { AppConfig, BackupFile, WowFlavor } from '../../shared/types';
 import { WOW_FLAVORS } from '../../shared/types';
-import { Empty, formatBytes, formatDate } from '../components/format';
+import { Empty, Skeleton, formatBytes, formatDate } from '../components/format';
 import { MetaDetails } from '../components/MetaDetails';
 
 export function BackupView({
@@ -11,7 +11,7 @@ export function BackupView({
   config: AppConfig;
   onConfigChange: () => Promise<void>;
 }): JSX.Element {
-  const [backups, setBackups] = useState<BackupFile[]>([]);
+  const [backups, setBackups] = useState<BackupFile[] | null>(null);
   const [running, setRunning] = useState(false);
   const [selection, setSelection] = useState<WowFlavor[]>(config.enabledFlavors);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -87,15 +87,25 @@ export function BackupView({
     }
   }
 
+  const latest = (backups ?? [])[0];
+
   return (
     <>
       <div className="card">
-        <h2 style={{ marginTop: 0 }}>Create backup</h2>
-        <p className="muted">
-          Install root:{' '}
-          <code style={{ color: 'var(--text)' }}>{config.wowInstallRoot}</code>
-          &nbsp;· Destination:{' '}
-          <code style={{ color: 'var(--text)' }}>{config.localBackupDir}</code>
+        <div className="row" style={{ marginBottom: 6 }}>
+          <h2 style={{ margin: 0 }}>Create backup</h2>
+          {latest ? (
+            <span className="chip chip--ok right">
+              Last backup {formatDate(latest.createdAtIso)}
+            </span>
+          ) : (
+            <span className="chip chip--muted right">No backups yet</span>
+          )}
+        </div>
+        <p className="muted" style={{ margin: '0 0 14px' }}>
+          Install root <span className="pathlike">{config.wowInstallRoot}</span>{' '}
+          &nbsp;·&nbsp; Destination{' '}
+          <span className="pathlike">{config.localBackupDir}</span>
         </p>
 
         <div className="field">
@@ -108,7 +118,7 @@ export function BackupView({
                   checked={selection.includes(f)}
                   onChange={() => toggle(f)}
                 />
-                {f}
+                <code>{f}</code>
               </label>
             ))}
           </div>
@@ -123,17 +133,22 @@ export function BackupView({
             {running ? 'Backing up…' : 'Back up now'}
           </button>
           <span className="muted">
-            Keeps the last {config.retentionCount} backups per flavor.
+            {config.retentionMode === 'time-machine'
+              ? 'Time Machine retention (7d · 4w · 12m · yearly).'
+              : `Keeps the last ${config.retentionCount} backups per flavor.`}
             {config.smb.autoUploadAfterBackup
-              ? ' New backups will also auto-upload to the remote share.'
+              ? ' Auto-uploading to the share after completion.'
               : ''}
           </span>
         </div>
       </div>
 
       <div className="card">
-        <div className="row">
+        <div className="row" style={{ marginBottom: 10 }}>
           <h2 style={{ margin: 0 }}>Local backups</h2>
+          <span className="chip chip--muted">
+            {backups === null ? '…' : `${backups.length} total`}
+          </span>
           <button
             className="right small"
             onClick={() => window.api.openPath(config.localBackupDir)}
@@ -144,8 +159,12 @@ export function BackupView({
             Refresh
           </button>
         </div>
-        {backups.length === 0 ? (
-          <Empty>No local backups yet.</Empty>
+        {backups === null ? (
+          <Skeleton rows={3} />
+        ) : backups.length === 0 ? (
+          <Empty icon="📦">
+            No local backups yet. Create your first backup above.
+          </Empty>
         ) : (
           <table>
             <thead>
@@ -166,16 +185,17 @@ export function BackupView({
                     <tr>
                       <td>
                         <button
-                          className="small"
+                          className="small icon-btn ghost"
                           onClick={() => toggleExpanded(b.name)}
-                          style={{ minWidth: 28 }}
                           title={open ? 'Hide details' : 'Show details'}
                         >
                           {open ? '−' : '+'}
                         </button>
                       </td>
                       <td style={{ wordBreak: 'break-all' }}>{b.name}</td>
-                      <td>{b.flavor}</td>
+                      <td>
+                        <code>{b.flavor}</code>
+                      </td>
                       <td>{formatBytes(b.sizeBytes)}</td>
                       <td>{formatDate(b.createdAtIso)}</td>
                       <td className="row" style={{ justifyContent: 'flex-end' }}>
@@ -191,7 +211,6 @@ export function BackupView({
                           className="small"
                           disabled={running}
                           onClick={() => upload(b.path)}
-                          title={running ? 'Wait for the current backup to finish' : undefined}
                         >
                           Upload
                         </button>

@@ -4,6 +4,39 @@ All notable changes to WoW Settings Backup are documented here.
 
 ---
 
+## [0.4.0] — 2026-04-23
+
+### Changed — Liquid Glass UI redesign
+
+- **New visual language** across the entire app: translucent glass cards,
+  native window vibrancy (macOS `sidebar` + Windows 11 acrylic), soft shadows,
+  and tighter typography. The app now feels at home next to the OS instead of
+  pasted on top of it.
+- **Floating bottom navigation** replaces the left sidebar. Tabs are a
+  compact pill dock that floats above content, keeping the main viewport
+  clean and focused.
+- **Hidden/inset titlebar** on macOS and Windows so glass extends edge-to-edge
+  with traffic lights floating over the content area.
+- **Mount indicator moved to the header** as a live status chip, with a
+  single Mount/Unmount toggle button replacing the old sidebar controls.
+- **Status chips everywhere** — share state, schedule state, upload
+  present/missing, backup counts, and last-run timestamps all use the same
+  consistent chip component.
+- **Empty and loading states** added to every list view — skeleton shimmer
+  while loading, illustrated empty state when there's nothing yet.
+- **Settings reorganised** into six collapsible sections (WoW install,
+  Local storage & retention, SMB share, Cross-machine sync, Scheduled
+  backups, Appearance) so you can focus on one concern at a time.
+
+### Added
+
+- **Light theme + Auto (system) option** — new three-way theme toggle in the
+  header and under Settings → Appearance. The preference is persisted in
+  `config.json`, applied instantly, and (when set to "Auto") reacts live to
+  OS appearance changes.
+
+---
+
 ## [0.3.6] — 2026-04-23
 
 ### Fixed

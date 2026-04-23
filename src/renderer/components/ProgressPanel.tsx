@@ -9,8 +9,9 @@ export function ProgressPanel({
   if (events.length === 0) return null;
   return (
     <div className="card">
-      <div className="muted" style={{ marginBottom: 8 }}>
-        Activity
+      <div className="row" style={{ marginBottom: 8 }}>
+        <h3 style={{ margin: 0 }}>Activity</h3>
+        <span className="chip chip--info right">{events.length}</span>
       </div>
       <div className="progress-list">
         {events.map((e) => (
