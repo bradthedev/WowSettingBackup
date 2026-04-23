@@ -9,8 +9,9 @@ import { downloadBackup, getRemoteMeta, listRemote, uploadBackup } from './remot
 import { restoreFromZip } from './restore';
 import { rebuildIndex } from './metadata';
 import { startScheduler, updateScheduler, getSchedulerStatus } from './scheduler';
+import { checkRemoteSync, applySyncBackup, dismissSyncBackup } from './sync';
 import { setupTray } from './tray';
-import type { AppConfig, WowFlavor } from '../shared/types';
+import type { AppConfig, SyncAvailableInfo, WowFlavor } from '../shared/types';
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -151,6 +152,14 @@ function registerIpc(): void {
     restoreFromZip(absPath)
   );
 
+  ipcMain.handle('remote:syncApply', async (_e, info: SyncAvailableInfo) => {
+    await applySyncBackup(info);
+  });
+
+  ipcMain.handle('remote:syncDismiss', (_e, info: SyncAvailableInfo) => {
+    dismissSyncBackup(info);
+  });
+
   ipcMain.handle('scheduler:getStatus', () => getSchedulerStatus());
 
   ipcMain.handle('update:install', () => {
@@ -171,6 +180,28 @@ function registerIpc(): void {
 // ---------------------------------------------------------------------------
 
 let isQuitting = false;
+
+// ---------------------------------------------------------------------------
+// Remote-sync checker (SMB share — newer backups from other machines)
+// ---------------------------------------------------------------------------
+
+async function runRemoteSyncCheck(): Promise<void> {
+  try {
+    const items = await checkRemoteSync();
+    if (items.length > 0) {
+      mainWindow?.webContents.send('remote:syncAvailable', items);
+    }
+  } catch (err) {
+    console.error('Remote sync check error:', err);
+  }
+}
+
+function setupRemoteSync(): void {
+  // First check 10 s after launch (slightly after the update check).
+  setTimeout(() => runRemoteSyncCheck(), 10_000);
+  // Then repeat every 4 hours.
+  setInterval(() => runRemoteSyncCheck(), 4 * 60 * 60 * 1_000);
+}
 
 // ---------------------------------------------------------------------------
 // Auto-updater (GitHub Releases via electron-updater)
@@ -224,6 +255,9 @@ app.whenReady().then(async () => {
 
   // Check for updates from GitHub Releases (production only)
   if (!isDev) setupAutoUpdater();
+
+  // Check the remote share for newer backups from other machines
+  setupRemoteSync();
 
   app.on('activate', () => {
     // macOS: clicking the dock icon shows the window

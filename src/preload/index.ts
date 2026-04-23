@@ -8,6 +8,7 @@ import type {
   ProgressEvent,
   RemoteIndex,
   SchedulerStatus,
+  SyncAvailableInfo,
   WowFlavor
 } from '../shared/types';
 
@@ -63,6 +64,19 @@ const api = {
     return () => ipcRenderer.off('update:downloaded', listener);
   },
   installUpdate: (): Promise<void> => ipcRenderer.invoke('update:install'),
+
+  /** Called when the main process detects newer remote backups from other machines. */
+  onSyncAvailable: (cb: (items: SyncAvailableInfo[]) => void) => {
+    const listener = (_: unknown, items: SyncAvailableInfo[]) => cb(items);
+    ipcRenderer.on('remote:syncAvailable', listener);
+    return () => ipcRenderer.off('remote:syncAvailable', listener);
+  },
+  /** Download and restore the given remote backup, then record it as synced. */
+  applySyncBackup: (info: SyncAvailableInfo): Promise<void> =>
+    ipcRenderer.invoke('remote:syncApply', info),
+  /** Mark the backup as seen without restoring so the banner won't reappear. */
+  dismissSyncBackup: (info: SyncAvailableInfo): Promise<void> =>
+    ipcRenderer.invoke('remote:syncDismiss', info),
 
   showInFolder: (absPath: string): Promise<void> =>
     ipcRenderer.invoke('shell:showInFolder', absPath),

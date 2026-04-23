@@ -76,6 +76,12 @@ export interface AppConfig {
   smb: SmbMountConfig;
   /** Automatic scheduled backup configuration. */
   schedule: ScheduleConfig;
+  /**
+   * When enabled, the app periodically checks the remote share for backups
+   * created by other machines. If a newer one is found the user is prompted
+   * to download and restore it automatically.
+   */
+  autoSyncFromRemote: boolean;
 }
 
 export interface BackupFile {
@@ -143,6 +149,18 @@ export interface RemoteIndex {
   entries: BackupMeta[];
 }
 
+/** Describes a remote backup from another machine that is newer than what was last synced. */
+export interface SyncAvailableInfo {
+  /** Bare filename of the remote .zip (e.g. "wow-addons__retail__2024-11-15_02-30-00.zip"). */
+  remoteName: string;
+  flavor: WowFlavor | 'unknown';
+  /** ISO timestamp the backup was created on the source machine. */
+  createdAtIso: string;
+  /** Hostname of the machine that created the backup. */
+  sourceHostname: string;
+  sizeBytes: number;
+}
+
 export interface ProgressEvent {
   id: string;
   phase: 'start' | 'progress' | 'done' | 'error';
@@ -172,5 +190,6 @@ export type IpcChannel =
   | 'remote:upload'
   | 'remote:download'
   | 'restore:fromZip'
+  | 'remote:syncApply'
   | 'scheduler:getStatus'
   | 'progress';
