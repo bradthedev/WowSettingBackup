@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import type { AppConfig, MountStatus, ProgressEvent } from '../shared/types';
+import type { AppConfig, MountStatus, ProgressEvent, SyncAvailableInfo } from '../shared/types';
 import { BackupView } from './views/BackupView';
 import { UploadView } from './views/UploadView';
 import { DownloadView } from './views/DownloadView';
@@ -16,6 +16,8 @@ export function App(): JSX.Element {
   const [updateVersion, setUpdateVersion] = useState<string | null>(null);
   const [updateProgress, setUpdateProgress] = useState<number | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
+  const [syncItems, setSyncItems] = useState<SyncAvailableInfo[]>([]);
+  const [syncApplying, setSyncApplying] = useState<string | null>(null); // remoteName being applied
 
   async function refreshConfig(): Promise<void> {
     setConfig(await window.api.getConfig());
@@ -50,12 +52,22 @@ export function App(): JSX.Element {
       setUpdateReady(true);
     });
 
+    const offSync = window.api.onSyncAvailable((items) => {
+      setSyncItems((prev) => {
+        // Merge: keep existing items, append truly new ones (by remoteName).
+        const existing = new Set(prev.map((i) => i.remoteName));
+        const incoming = items.filter((i) => !existing.has(i.remoteName));
+        return incoming.length > 0 ? [...prev, ...incoming] : prev;
+      });
+    });
+
     return () => {
       off();
       clearInterval(mountPoll);
       offAvailable();
       offProgress();
       offDownloaded();
+      offSync();
     };
   }, []);
 
@@ -153,6 +165,43 @@ export function App(): JSX.Element {
             )}
           </div>
         )}
+
+        {syncItems.map((item) => (
+          <div key={item.remoteName} className="sync-banner">
+            <span className="sync-banner__label">
+              Newer {item.flavor === 'unknown' ? '' : <code>{item.flavor}</code>} backup from{' '}
+              <strong>{item.sourceHostname}</strong>{' '}
+              ({new Date(item.createdAtIso).toLocaleString()}) is available.
+            </span>
+            <button
+              className="sync-banner__btn sync-banner__btn--primary"
+              disabled={syncApplying === item.remoteName}
+              onClick={async () => {
+                setSyncApplying(item.remoteName);
+                try {
+                  await window.api.applySyncBackup(item);
+                  setSyncItems((prev) => prev.filter((i) => i.remoteName !== item.remoteName));
+                } catch (err) {
+                  console.error('Sync apply failed:', err);
+                } finally {
+                  setSyncApplying(null);
+                }
+              }}
+            >
+              {syncApplying === item.remoteName ? 'Restoring…' : 'Download & Restore'}
+            </button>
+            <button
+              className="sync-banner__btn"
+              disabled={syncApplying === item.remoteName}
+              onClick={async () => {
+                await window.api.dismissSyncBackup(item);
+                setSyncItems((prev) => prev.filter((i) => i.remoteName !== item.remoteName));
+              }}
+            >
+              Dismiss
+            </button>
+          </div>
+        ))}
 
         {tab === 'backup' && (
           <BackupView config={config} onConfigChange={refreshConfig} />

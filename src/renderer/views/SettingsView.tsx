@@ -257,6 +257,19 @@ export function SettingsView({
           </label>
         </div>
 
+        <div className="checkbox-row">
+          <label>
+            <input
+              type="checkbox"
+              checked={draft.autoSyncFromRemote ?? false}
+              onChange={(e) =>
+                setDraft({ ...draft, autoSyncFromRemote: e.target.checked })
+              }
+            />
+            Check remote share for newer backups from other machines and prompt to restore
+          </label>
+        </div>
+
         <div className="row" style={{ marginTop: 12 }}>
           <button
             onClick={testMount}

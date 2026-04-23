@@ -4,6 +4,23 @@ All notable changes to WoW Settings Backup are documented here.
 
 ---
 
+## [0.3.5] — 2026-04-23
+
+### Added
+
+- **Remote sync**: the app now periodically checks the SMB share for backups
+  created by other machines. When a newer backup is found a banner appears
+  with **Download & Restore** and **Dismiss** options — no silent overwrite,
+  always your call.
+- New **Settings** toggle: *"Check remote share for newer backups from other
+  machines and prompt to restore"* (disabled by default).
+- Sync state is persisted in `sync-state.json` so the same backup is never
+  offered twice, even after a restart.
+- Check runs 10 seconds after launch and every 4 hours thereafter, matching
+  the existing update-check cadence.
+
+---
+
 ## [0.3.4] — 2026-04-23
 
 ### Fixed

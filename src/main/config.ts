@@ -54,7 +54,8 @@ export function defaultConfig(): AppConfig {
       intervalHours: 6,
       dailyTime: '02:00',
       cronExpression: ''
-    }
+    },
+    autoSyncFromRemote: false
   };
 }
 
@@ -91,6 +92,9 @@ function sanitize(raw: Partial<AppConfig>): AppConfig {
   }
   if (!(['time-machine', 'count'] as RetentionMode[]).includes(merged.retentionMode)) {
     merged.retentionMode = 'time-machine';
+  }
+  if (typeof merged.autoSyncFromRemote !== 'boolean') {
+    merged.autoSyncFromRemote = false;
   }
   return merged;
 }
