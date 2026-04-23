@@ -1,6 +1,6 @@
 {
   "name": "wow-settings-backup",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Backup, sync, and restore World of Warcraft AddOns across machines via an SMB share.",
   "main": "dist/main/index.js",
   "author": "",
