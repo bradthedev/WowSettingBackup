@@ -4,6 +4,16 @@ All notable changes to WoW Settings Backup are documented here.
 
 ---
 
+## [0.3.2] — 2026-04-23
+
+### Fixed
+
+- macOS builds are now code-signed with a Developer ID Application certificate
+  and notarized by Apple. Builds open on any Mac without Gatekeeper warnings
+  or the "damaged app" error.
+
+---
+
 ## [0.3.1] — 2026-04-23
 
 ### Fixed
