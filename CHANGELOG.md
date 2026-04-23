@@ -4,6 +4,16 @@ All notable changes to WoW Settings Backup are documented here.
 
 ---
 
+## [0.3.4] — 2026-04-23
+
+### Fixed
+
+- CI now uses a clean `.p12` containing only the Developer ID Application
+  certificate and private key, fixing a keychain import failure caused by
+  unrelated identities being bundled into the exported certificate.
+
+---
+
 ## [0.3.3] — 2026-04-23
 
 ### Fixed
