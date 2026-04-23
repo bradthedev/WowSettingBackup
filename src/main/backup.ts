@@ -205,6 +205,66 @@ function pruneBackups(dir: string, flavor: WowFlavor, keep: number): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// ISO week key helper (ISO 8601: week starts Monday, week 1 = first week with Thursday)
+// ---------------------------------------------------------------------------
+function isoWeekKey(d: Date): string {
+  const utc = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = utc.getUTCDay() || 7; // convert Sunday(0) → 7
+  utc.setUTCDate(utc.getUTCDate() + 4 - day); // shift to Thursday of the same week
+  const yearStart = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1));
+  const weekNum = Math.ceil(((utc.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+  return `${utc.getUTCFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+}
+
+/**
+ * Time Machine–style retention for a single flavor:
+ *   • Last 7 days   → keep every backup
+ *   • 7–31 days     → keep 1 per ISO week  (most recent in each week)
+ *   • 31–365 days   → keep 1 per month     (most recent in each month)
+ *   • > 365 days    → keep 1 per year      (most recent in each year)
+ */
+function pruneBackupsTimeMachine(dir: string, flavor: WowFlavor): void {
+  const all = listBackupsIn(dir).filter((b) => b.flavor === flavor);
+  if (all.length === 0) return;
+
+  const now = Date.now();
+  const MS = 1000;
+  const DAY = 86_400 * MS;
+
+  const keep = new Set<string>();
+  const weekSeen = new Set<string>();
+  const monthSeen = new Set<string>();
+  const yearSeen = new Set<string>();
+
+  // `all` is already sorted newest-first, so the first backup in each bucket
+  // is always the most recent one.
+  for (const b of all) {
+    const age = now - new Date(b.createdAtIso).getTime();
+
+    if (age <= 7 * DAY) {
+      keep.add(b.path);
+    } else if (age <= 31 * DAY) {
+      const key = isoWeekKey(new Date(b.createdAtIso));
+      if (!weekSeen.has(key)) { weekSeen.add(key); keep.add(b.path); }
+    } else if (age <= 365 * DAY) {
+      const d = new Date(b.createdAtIso);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (!monthSeen.has(key)) { monthSeen.add(key); keep.add(b.path); }
+    } else {
+      const key = String(new Date(b.createdAtIso).getFullYear());
+      if (!yearSeen.has(key)) { yearSeen.add(key); keep.add(b.path); }
+    }
+  }
+
+  for (const b of all) {
+    if (keep.has(b.path)) continue;
+    try { fs.unlinkSync(b.path); } catch (err) { console.warn('Prune failed for', b.path, err); }
+    const sidecar = metaPathFor(b.path);
+    if (fs.existsSync(sidecar)) { try { fs.unlinkSync(sidecar); } catch { /* ignore */ } }
+  }
+}
+
 export async function runBackup(flavors: WowFlavor[]): Promise<BackupRunResult> {
   const cfg = loadConfig();
   const results: BackupFile[] = [];
@@ -272,6 +332,11 @@ export async function runBackup(flavors: WowFlavor[]): Promise<BackupRunResult> 
       }
 
       pruneBackups(cfg.localBackupDir, flavor, cfg.retentionCount);
+      if (cfg.retentionMode === 'time-machine') {
+        pruneBackupsTimeMachine(cfg.localBackupDir, flavor);
+      } else {
+        pruneBackups(cfg.localBackupDir, flavor, cfg.retentionCount);
+      }
 
       emitProgress({ id, phase: 'done', label, ratio: 1 });
       results.push(toBackupFile(outPath));

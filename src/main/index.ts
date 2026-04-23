@@ -7,6 +7,8 @@ import { mountShare, mountStatus, unmountShare } from './smb';
 import { downloadBackup, getRemoteMeta, listRemote, uploadBackup } from './remote';
 import { restoreFromZip } from './restore';
 import { rebuildIndex } from './metadata';
+import { startScheduler, updateScheduler, getSchedulerStatus } from './scheduler';
+import { setupTray } from './tray';
 import type { AppConfig, WowFlavor } from '../shared/types';
 
 const isDev = process.env.NODE_ENV === 'development';
@@ -33,6 +35,14 @@ async function createWindow(): Promise<void> {
     return { action: 'deny' };
   });
 
+  // Close button hides to tray instead of quitting.
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      mainWindow?.hide();
+    }
+  });
+
   if (isDev) {
     await mainWindow.loadURL('http://localhost:5173/');
     mainWindow.webContents.openDevTools({ mode: 'detach' });
@@ -45,9 +55,12 @@ async function createWindow(): Promise<void> {
 
 function registerIpc(): void {
   ipcMain.handle('config:get', () => loadConfig());
-  ipcMain.handle('config:set', (_e, patch: Partial<AppConfig>) =>
-    patchConfig(patch)
-  );
+  ipcMain.handle('config:set', (_e, patch: Partial<AppConfig>) => {
+    const cfg = patchConfig(patch);
+    // Restart/stop the scheduler whenever settings change
+    updateScheduler();
+    return cfg;
+  });
 
   ipcMain.handle('dialog:pickDirectory', async (_e, title?: string) => {
     const res = await dialog.showOpenDialog({
@@ -137,6 +150,8 @@ function registerIpc(): void {
     restoreFromZip(absPath)
   );
 
+  ipcMain.handle('scheduler:getStatus', () => getSchedulerStatus());
+
   ipcMain.handle('shell:showInFolder', (_e, absPath: string) => {
     shell.showItemInFolder(absPath);
   });
@@ -145,9 +160,22 @@ function registerIpc(): void {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Quitting flag — set before app.quit() so the close handler lets it through
+// ---------------------------------------------------------------------------
+
+let isQuitting = false;
+
+// ---------------------------------------------------------------------------
+// App lifecycle
+// ---------------------------------------------------------------------------
+
 app.whenReady().then(async () => {
   registerIpc();
   await createWindow();
+
+  // Set up system tray (must be after window creation)
+  if (mainWindow) setupTray(mainWindow);
 
   const cfg = loadConfig();
   if (cfg.smb.autoMountOnLaunch && cfg.smb.host && cfg.smb.share) {
@@ -156,11 +184,25 @@ app.whenReady().then(async () => {
     );
   }
 
+  // Start the scheduled backup timer if enabled
+  startScheduler();
+
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    // macOS: clicking the dock icon shows the window
+    if (mainWindow) {
+      mainWindow.show();
+    } else {
+      createWindow();
+    }
   });
 });
 
+// Signal that a real quit was requested (from tray menu or OS).
+app.on('before-quit', () => {
+  isQuitting = true;
+});
+
+// Keep the process alive for the tray — don't auto-quit when windows close.
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  // Intentionally empty: the app lives in the system tray.
 });

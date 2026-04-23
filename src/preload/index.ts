@@ -7,6 +7,7 @@ import type {
   MountStatus,
   ProgressEvent,
   RemoteIndex,
+  SchedulerStatus,
   WowFlavor
 } from '../shared/types';
 
@@ -42,6 +43,9 @@ const api = {
 
   restoreFromZip: (absZipPath: string): Promise<void> =>
     ipcRenderer.invoke('restore:fromZip', absZipPath),
+
+  getSchedulerStatus: (): Promise<SchedulerStatus> =>
+    ipcRenderer.invoke('scheduler:getStatus'),
 
   showInFolder: (absPath: string): Promise<void> =>
     ipcRenderer.invoke('shell:showInFolder', absPath),
