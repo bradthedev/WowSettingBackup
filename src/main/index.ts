@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import path from 'node:path';
 import fs from 'node:fs';
 import { loadConfig, patchConfig } from './config';
@@ -152,6 +153,11 @@ function registerIpc(): void {
 
   ipcMain.handle('scheduler:getStatus', () => getSchedulerStatus());
 
+  ipcMain.handle('update:install', () => {
+    isQuitting = true;
+    autoUpdater.quitAndInstall();
+  });
+
   ipcMain.handle('shell:showInFolder', (_e, absPath: string) => {
     shell.showItemInFolder(absPath);
   });
@@ -165,6 +171,35 @@ function registerIpc(): void {
 // ---------------------------------------------------------------------------
 
 let isQuitting = false;
+
+// ---------------------------------------------------------------------------
+// Auto-updater (GitHub Releases via electron-updater)
+// ---------------------------------------------------------------------------
+
+function setupAutoUpdater(): void {
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('update-available', (info) => {
+    mainWindow?.webContents.send('update:available', info.version);
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    mainWindow?.webContents.send('update:progress', Math.round(progress.percent));
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    mainWindow?.webContents.send('update:downloaded', info.version);
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('Auto-updater error:', err.message);
+  });
+
+  // Check 5 s after launch so startup is not delayed, then every 4 hours.
+  setTimeout(() => autoUpdater.checkForUpdates().catch(console.error), 5_000);
+  setInterval(() => autoUpdater.checkForUpdates().catch(console.error), 4 * 60 * 60 * 1_000);
+}
 
 // ---------------------------------------------------------------------------
 // App lifecycle
@@ -186,6 +221,9 @@ app.whenReady().then(async () => {
 
   // Start the scheduled backup timer if enabled
   startScheduler();
+
+  // Check for updates from GitHub Releases (production only)
+  if (!isDev) setupAutoUpdater();
 
   app.on('activate', () => {
     // macOS: clicking the dock icon shows the window

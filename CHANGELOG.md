@@ -4,6 +4,25 @@ All notable changes to WoW Settings Backup are documented here.
 
 ---
 
+## [0.3.0] — 2026-04-23
+
+### Added
+
+#### Auto-updater
+- The app now checks for new releases on GitHub automatically, 5 seconds after
+  launch and every 4 hours thereafter.
+- Updates are downloaded silently in the background using differential (blockmap)
+  downloads — only changed bytes are transferred.
+- A banner appears in the main window while the update is downloading, showing
+  a progress bar and the incoming version number.
+- Once downloaded, the banner changes to a "Restart to install" prompt.
+  Clicking it quits the app and installs the update immediately.
+- `autoInstallOnAppQuit` is enabled, so the update also installs automatically
+  the next time the app is closed normally.
+- Auto-update is disabled in development mode so local runs are unaffected.
+
+---
+
 ## [0.2.0] — 2026-04-23
 
 ### Added

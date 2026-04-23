@@ -13,6 +13,9 @@ export function App(): JSX.Element {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [mount, setMount] = useState<MountStatus>({ mounted: false });
   const [events, setEvents] = useState<ProgressEvent[]>([]);
+  const [updateVersion, setUpdateVersion] = useState<string | null>(null);
+  const [updateProgress, setUpdateProgress] = useState<number | null>(null);
+  const [updateReady, setUpdateReady] = useState(false);
 
   async function refreshConfig(): Promise<void> {
     setConfig(await window.api.getConfig());
@@ -35,9 +38,24 @@ export function App(): JSX.Element {
       });
     });
     const mountPoll = setInterval(refreshMount, 5000);
+
+    const offAvailable = window.api.onUpdateAvailable((v) => {
+      setUpdateVersion(v);
+      setUpdateProgress(0);
+    });
+    const offProgress = window.api.onUpdateProgress((p) => setUpdateProgress(p));
+    const offDownloaded = window.api.onUpdateDownloaded((v) => {
+      setUpdateVersion(v);
+      setUpdateProgress(null);
+      setUpdateReady(true);
+    });
+
     return () => {
       off();
       clearInterval(mountPoll);
+      offAvailable();
+      offProgress();
+      offDownloaded();
     };
   }, []);
 
@@ -114,6 +132,28 @@ export function App(): JSX.Element {
       </aside>
 
       <main className="main">
+        {updateVersion && (
+          <div className={`update-banner ${updateReady ? 'update-banner--ready' : ''}`}>
+            {updateReady ? (
+              <>
+                Update {updateVersion} downloaded —{' '}
+                <button className="update-banner__btn" onClick={() => window.api.installUpdate()}>
+                  Restart to install
+                </button>
+              </>
+            ) : (
+              <>
+                Downloading update {updateVersion}…
+                {updateProgress !== null && (
+                  <span className="update-banner__progress">
+                    <span style={{ width: `${updateProgress}%` }} />
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
         {tab === 'backup' && (
           <BackupView config={config} onConfigChange={refreshConfig} />
         )}
