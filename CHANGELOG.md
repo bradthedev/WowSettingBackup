@@ -4,6 +4,15 @@ All notable changes to WoW Settings Backup are documented here.
 
 ---
 
+## [0.3.3] — 2026-04-23
+
+### Fixed
+
+- CI keychain import now uses `base64 -d` instead of `base64 --decode` for
+  compatibility with the macOS runner.
+
+---
+
 ## [0.3.2] — 2026-04-23
 
 ### Fixed
