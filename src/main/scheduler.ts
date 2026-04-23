@@ -7,6 +7,7 @@ import { runBackup } from './backup';
 import { mountShare, mountStatus } from './smb';
 import { uploadBackup } from './remote';
 import { emitProgress } from './progress';
+import { recordJobRun, setJobEnabled, setJobNextRun } from './jobs';
 import type { ScheduleConfig, SchedulerStatus } from '../shared/types';
 
 // ---------------------------------------------------------------------------
@@ -149,6 +150,7 @@ async function runScheduledBackup(): Promise<void> {
         label: 'Scheduled backup completed with errors',
         message: summary
       });
+      recordJobRun('scheduler', 'error', summary);
     } else {
       lastError = null;
       lastErrorIso = null;
@@ -159,6 +161,11 @@ async function runScheduledBackup(): Promise<void> {
         label: `Scheduled backup complete — ${result.created.length} file(s)`,
         ratio: 1
       });
+      recordJobRun(
+        'scheduler',
+        'ok',
+        `${result.created.length} backup(s) created`
+      );
     }
   } catch (err) {
     const msg = (err as Error).message;
@@ -171,6 +178,7 @@ async function runScheduledBackup(): Promise<void> {
       label: 'Scheduled backup failed',
       message: msg
     });
+    recordJobRun('scheduler', 'error', msg);
   } finally {
     refreshNextRun();
   }
@@ -179,6 +187,7 @@ async function runScheduledBackup(): Promise<void> {
 function refreshNextRun(): void {
   if (!task) {
     nextRunIso = null;
+    setJobNextRun('scheduler', null);
     return;
   }
   try {
@@ -187,6 +196,7 @@ function refreshNextRun(): void {
   } catch {
     nextRunIso = null;
   }
+  setJobNextRun('scheduler', nextRunIso);
 }
 
 // ---------------------------------------------------------------------------
@@ -198,7 +208,10 @@ export function startScheduler(): void {
   stopScheduler();
 
   const cfg = loadConfig();
-  if (!cfg.schedule.enabled) return;
+  if (!cfg.schedule.enabled) {
+    setJobEnabled('scheduler', false);
+    return;
+  }
 
   const expr = scheduleToCron(cfg.schedule);
   if (!expr || !cron.validate(expr)) {
@@ -241,6 +254,7 @@ export function startScheduler(): void {
   }
 
   refreshNextRun();
+  setJobEnabled('scheduler', true);
   console.log(
     `[scheduler] Started. Next run: ${nextRunIso ?? 'unknown'}`
   );
@@ -277,6 +291,8 @@ export function stopScheduler(): void {
     task = null;
     nextRunIso = null;
     currentCron = null;
+    setJobEnabled('scheduler', false);
+    setJobNextRun('scheduler', null);
     console.log('[scheduler] Stopped.');
   }
 }

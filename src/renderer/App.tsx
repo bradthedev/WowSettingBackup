@@ -10,7 +10,7 @@ import { BackupView } from './views/BackupView';
 import { UploadView } from './views/UploadView';
 import { DownloadView } from './views/DownloadView';
 import { SettingsView } from './views/SettingsView';
-import { ProgressPanel } from './components/ProgressPanel';
+import { ActivityDock } from './components/ActivityDock';
 
 type Tab = 'backup' | 'upload' | 'download' | 'settings';
 
@@ -48,16 +48,12 @@ export function App(): JSX.Element {
     const off = window.api.onProgress((e) => {
       setEvents((prev) => {
         const idx = prev.findIndex((p) => p.id === e.id);
-        if (idx === -1) return [e, ...prev].slice(0, 8);
+        // Cap at 200 to keep memory bounded for very long sessions.
+        if (idx === -1) return [e, ...prev].slice(0, 200);
         const next = prev.slice();
         next[idx] = e;
         return next;
       });
-      if (e.phase === 'done' || e.phase === 'error') {
-        setTimeout(() => {
-          setEvents((prev) => prev.filter((p) => p.id !== e.id));
-        }, 6000);
-      }
     });
     const mountPoll = setInterval(refreshMount, 5000);
 
@@ -229,8 +225,6 @@ export function App(): JSX.Element {
         {tab === 'settings' && (
           <SettingsView config={config} onConfigChange={refreshConfig} />
         )}
-
-        <ProgressPanel events={events} />
       </main>
 
       <nav className="nav-dock" aria-label="Primary">
@@ -244,6 +238,8 @@ export function App(): JSX.Element {
           </button>
         ))}
       </nav>
+
+      <ActivityDock events={events} onClear={() => setEvents([])} />
     </div>
   );
 }

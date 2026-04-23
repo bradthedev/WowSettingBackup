@@ -4,6 +4,35 @@ All notable changes to WoW Settings Backup are documented here.
 
 ---
 
+## [0.4.1] — 2026-04-23
+
+### Added — Activity dock & background-job visibility
+
+- **Floating Activity dock** in the bottom-right corner replaces the inline
+  ProgressPanel. Click the pill to open a popover with the **full session
+  history** of every backup, upload, download, scheduled job and sync poll.
+  Events are no longer auto-removed after 6 seconds — they stay until you
+  hit Clear or restart the app.
+- The dock badge animates while jobs are running and turns red when the most
+  recent event is an error, so you always know the system is doing something
+  even when the popover is closed.
+- **Background jobs panel** in Settings shows last-ran timestamp, outcome,
+  next-run estimate and detail message for each periodic job: scheduled
+  backup, remote-sync poll, update check, and SMB auto-mount. Updates live
+  via a new `jobs:updated` IPC broadcast.
+- **Manual "Check for updates"** button under a new Settings → Updates
+  section. The automatic check still runs every 4 hours and on launch.
+
+### Changed
+
+- Activity event history capped at 200 (was 8) to keep memory bounded across
+  long sessions while preserving meaningful history.
+- Periodic update poll is now driven by a `setTimeout` chain that is
+  rescheduled after every check (manual or automatic), so the next-run
+  estimate shown in Settings stays accurate after on-demand checks.
+
+---
+
 ## [0.4.0] — 2026-04-23
 
 ### Changed — Liquid Glass UI redesign

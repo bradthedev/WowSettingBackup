@@ -170,6 +170,154 @@ code { font-family: 'JetBrains Mono', Menlo, Consolas, monospace; font-size: 0.9
   box-shadow: 0 4px 14px rgba(244, 196, 48, 0.35);
 }
 
+/* Floating Activity dock (bottom-right) ---------------------------------- */
+.activity-dock__button {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--panel-strong);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: var(--shadow-lift);
+  z-index: 21;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.activity-dock__button:hover { transform: translateY(-1px); }
+.activity-dock__button--active { border-color: var(--accent); }
+.activity-dock__button--error { border-color: var(--danger); }
+.activity-dock__icon {
+  display: inline-block;
+  font-size: 14px;
+  line-height: 1;
+}
+.activity-dock__button--active .activity-dock__icon {
+  animation: spin 1.4s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.activity-dock__label { line-height: 1; }
+.activity-dock__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--panel-hover);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+}
+.activity-dock__badge--active { background: var(--accent); color: var(--accent-fg); }
+.activity-dock__badge--error  { background: var(--danger); color: #fff; }
+
+.activity-dock__popover {
+  position: fixed;
+  right: 22px;
+  bottom: 78px;
+  width: min(420px, calc(100vw - 44px));
+  max-height: min(560px, calc(100vh - 140px));
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-strong);
+  backdrop-filter: blur(32px) saturate(180%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lift);
+  z-index: 22;
+  overflow: hidden;
+  animation: dock-pop 0.16s ease-out;
+}
+@keyframes dock-pop {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+.activity-dock__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.activity-dock__header h3 { margin: 0; font-size: 14px; }
+.activity-dock__header .muted { font-size: 12px; }
+.activity-dock__header-actions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 6px;
+}
+.activity-dock__empty {
+  padding: 32px 24px;
+  text-align: center;
+  color: var(--muted);
+}
+.activity-dock__empty .empty__icon { font-size: 32px; margin-bottom: 10px; }
+.activity-dock__list {
+  list-style: none;
+  margin: 0;
+  padding: 8px 8px 12px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.activity-item {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+.activity-item--error { border-color: color-mix(in srgb, var(--danger) 50%, var(--border)); }
+.activity-item--done  { opacity: 0.85; }
+.activity-item__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.activity-item__label {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+}
+.activity-item__message {
+  margin-top: 6px;
+  font-size: 11px;
+  word-break: break-word;
+}
+
+/* Background-jobs grid (Settings) ---------------------------------------- */
+.jobs-grid { display: flex; flex-direction: column; gap: 10px; }
+.jobs-grid__row {
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.jobs-grid__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.jobs-grid__label { font-weight: 600; font-size: 13px; flex: 1; }
+.jobs-grid__detail {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 /* Glass cards ------------------------------------------------------------- */
 .card {
   background: var(--panel);

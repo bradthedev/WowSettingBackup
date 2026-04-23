@@ -1,13 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import type {
   AppConfig,
+  JobStatus,
   RetentionMode,
   ScheduleMode,
   SchedulerStatus,
   ThemePreference
 } from '../../shared/types';
 
-type SectionId = 'wow' | 'storage' | 'share' | 'sync' | 'schedule' | 'appearance';
+type SectionId =
+  | 'wow'
+  | 'storage'
+  | 'share'
+  | 'sync'
+  | 'schedule'
+  | 'updates'
+  | 'jobs'
+  | 'appearance';
 
 function Section({
   id,
@@ -49,12 +58,17 @@ export function SettingsView({
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
+  const [jobs, setJobs] = useState<JobStatus[]>([]);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateCheckResult, setUpdateCheckResult] = useState<string | null>(null);
   const [open, setOpen] = useState<Record<SectionId, boolean>>({
     wow: true,
     storage: true,
     share: false,
     sync: false,
     schedule: false,
+    updates: false,
+    jobs: false,
     appearance: false
   });
 
@@ -68,6 +82,21 @@ export function SettingsView({
       window.api.getSchedulerStatus().then(setSchedulerStatus).catch(() => {});
     }, 15000);
     return () => clearInterval(t);
+  }, []);
+
+  // Live-updating background-job snapshot.
+  useEffect(() => {
+    window.api.getJobs().then(setJobs).catch(() => {});
+    const off = window.api.onJobsUpdated(setJobs);
+    // Refresh every 30 s so 'next run' clocks stay roughly in sync even when
+    // no broadcast fires (e.g. between sync polls).
+    const t = setInterval(() => {
+      window.api.getJobs().then(setJobs).catch(() => {});
+    }, 30000);
+    return () => {
+      off();
+      clearInterval(t);
+    };
   }, []);
 
   // Sync in coming config prop (e.g. after external theme change) so draft matches.
@@ -568,6 +597,97 @@ export function SettingsView({
             )}
           </>
         )}
+      </Section>
+
+      <Section
+        id="updates"
+        title="Updates"
+        open={open.updates}
+        onToggle={toggleSection}
+      >
+        <p className="muted" style={{ marginTop: 0 }}>
+          The app checks GitHub Releases for new versions automatically every
+          4 hours and on launch. You can also check on demand.
+        </p>
+        <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+          <button
+            disabled={checkingUpdate}
+            onClick={async () => {
+              setCheckingUpdate(true);
+              setUpdateCheckResult(null);
+              try {
+                const res = await window.api.checkForUpdatesNow();
+                setUpdateCheckResult(
+                  res.ok
+                    ? res.message ?? 'Check complete'
+                    : `Failed: ${res.message ?? 'unknown error'}`
+                );
+              } finally {
+                setCheckingUpdate(false);
+              }
+            }}
+          >
+            {checkingUpdate ? 'Checking…' : 'Check for updates'}
+          </button>
+          {updateCheckResult && (
+            <span
+              className={`chip ${updateCheckResult.startsWith('Failed') ? 'chip--bad' : 'chip--ok'}`}
+            >
+              {updateCheckResult}
+            </span>
+          )}
+        </div>
+      </Section>
+
+      <Section
+        id="jobs"
+        title="Background jobs"
+        open={open.jobs}
+        onToggle={toggleSection}
+      >
+        <p className="muted" style={{ marginTop: 0 }}>
+          Last-run status for every periodic job in the app. Times update live
+          as jobs complete.
+        </p>
+        <div className="jobs-grid">
+          {jobs.map((j) => (
+            <div key={j.id} className="jobs-grid__row">
+              <div className="jobs-grid__head">
+                <span className="jobs-grid__label">{j.label}</span>
+                <span
+                  className={`chip ${j.enabled ? 'chip--ok' : 'chip--muted'}`}
+                >
+                  {j.enabled ? 'enabled' : 'disabled'}
+                </span>
+                {j.lastResult && (
+                  <span
+                    className={`chip ${
+                      j.lastResult === 'ok'
+                        ? 'chip--ok'
+                        : j.lastResult === 'error'
+                          ? 'chip--bad'
+                          : 'chip--muted'
+                    }`}
+                  >
+                    {j.lastResult}
+                  </span>
+                )}
+              </div>
+              <div className="muted jobs-grid__detail">
+                <div>
+                  Last ran:{' '}
+                  {j.lastRunIso
+                    ? new Date(j.lastRunIso).toLocaleString()
+                    : 'never'}
+                </div>
+                {j.nextRunIso && (
+                  <div>Next run: {new Date(j.nextRunIso).toLocaleString()}</div>
+                )}
+                {j.lastMessage && <div>Detail: {j.lastMessage}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
       </Section>
 
       <Section
