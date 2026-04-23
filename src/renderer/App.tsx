@@ -38,6 +38,12 @@ export function App(): JSX.Element {
         next[idx] = e;
         return next;
       });
+      // Auto-clear done/error events after 6 s so the panel doesn't pile up.
+      if (e.phase === 'done' || e.phase === 'error') {
+        setTimeout(() => {
+          setEvents((prev) => prev.filter((p) => p.id !== e.id));
+        }, 6000);
+      }
     });
     const mountPoll = setInterval(refreshMount, 5000);
 
@@ -61,6 +67,11 @@ export function App(): JSX.Element {
       });
     });
 
+    const offSyncApplied = window.api.onSyncApplied((info) => {
+      // Remove any prompt for this item (unlikely to be present) and show a done toast.
+      setSyncItems((prev) => prev.filter((i) => i.remoteName !== info.remoteName));
+    });
+
     return () => {
       off();
       clearInterval(mountPoll);
@@ -68,6 +79,7 @@ export function App(): JSX.Element {
       offProgress();
       offDownloaded();
       offSync();
+      offSyncApplied();
     };
   }, []);
 

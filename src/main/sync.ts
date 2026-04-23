@@ -160,3 +160,24 @@ export function dismissSyncBackup(info: SyncAvailableInfo): void {
     }
   }
 }
+
+/**
+ * Convenience helper: the silent auto-install path. Checks for newer backups
+ * and, if any are found AND `autoInstallSyncBackup` is enabled, applies them
+ * automatically. Returns the number of backups applied.
+ */
+export async function autoInstallIfEnabled(): Promise<number> {
+  const cfg = loadConfig();
+  if (!cfg.autoInstallSyncBackup) return 0;
+  const items = await checkRemoteSync();
+  let applied = 0;
+  for (const item of items) {
+    try {
+      await applySyncBackup(item);
+      applied += 1;
+    } catch (err) {
+      console.error('[sync] auto-install failed for', item.remoteName, err);
+    }
+  }
+  return applied;
+}

@@ -16,6 +16,10 @@ export function SettingsView({
 
   useEffect(() => {
     window.api.getSchedulerStatus().then(setSchedulerStatus).catch(() => {});
+    const t = setInterval(() => {
+      window.api.getSchedulerStatus().then(setSchedulerStatus).catch(() => {});
+    }, 15000);
+    return () => clearInterval(t);
   }, []);
 
   function refreshSchedulerStatus(): void {
@@ -266,9 +270,48 @@ export function SettingsView({
                 setDraft({ ...draft, autoSyncFromRemote: e.target.checked })
               }
             />
-            Check remote share for newer backups from other machines and prompt to restore
+            Check remote share for newer backups from other machines
           </label>
         </div>
+
+        {draft.autoSyncFromRemote && (
+          <>
+            <div className="field" style={{ marginTop: 8 }}>
+              <label>Check frequency</label>
+              <select
+                value={draft.syncIntervalMinutes ?? 240}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    syncIntervalMinutes: Number(e.target.value)
+                  })
+                }
+              >
+                <option value={5}>Every 5 minutes</option>
+                <option value={15}>Every 15 minutes</option>
+                <option value={30}>Every 30 minutes</option>
+                <option value={60}>Every hour</option>
+                <option value={120}>Every 2 hours</option>
+                <option value={240}>Every 4 hours</option>
+                <option value={720}>Every 12 hours</option>
+                <option value={1440}>Once a day</option>
+              </select>
+            </div>
+
+            <div className="checkbox-row">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={draft.autoInstallSyncBackup ?? false}
+                  onChange={(e) =>
+                    setDraft({ ...draft, autoInstallSyncBackup: e.target.checked })
+                  }
+                />
+                Automatically download and restore newer backups without prompting
+              </label>
+            </div>
+          </>
+        )}
 
         <div className="row" style={{ marginTop: 12 }}>
           <button
@@ -412,6 +455,11 @@ export function SettingsView({
                       {schedulerStatus.running ? 'running' : 'stopped'}
                     </span>
                   </div>
+                  {schedulerStatus.cronExpression && (
+                    <div>
+                      Cron: <code>{schedulerStatus.cronExpression}</code>
+                    </div>
+                  )}
                   {schedulerStatus.lastRunIso && (
                     <div>Last run: {new Date(schedulerStatus.lastRunIso).toLocaleString()}</div>
                   )}
@@ -421,6 +469,27 @@ export function SettingsView({
                   {!schedulerStatus.nextRunIso && schedulerStatus.running && draft.schedule.mode === 'custom' && (
                     <div>Next run: depends on cron expression</div>
                   )}
+                  {schedulerStatus.lastError && (
+                    <div className="status bad" style={{ marginTop: 6 }}>
+                      Last error{schedulerStatus.lastErrorIso
+                        ? ` (${new Date(schedulerStatus.lastErrorIso).toLocaleString()})`
+                        : ''}: {schedulerStatus.lastError}
+                    </div>
+                  )}
+                </div>
+                <div className="row" style={{ marginTop: 8 }}>
+                  <button
+                    className="small"
+                    onClick={async () => {
+                      try {
+                        await window.api.runScheduledBackupNow();
+                      } finally {
+                        refreshSchedulerStatus();
+                      }
+                    }}
+                  >
+                    Run scheduled backup now
+                  </button>
                 </div>
               </div>
             )}

@@ -47,6 +47,8 @@ const api = {
 
   getSchedulerStatus: (): Promise<SchedulerStatus> =>
     ipcRenderer.invoke('scheduler:getStatus'),
+  runScheduledBackupNow: (): Promise<void> =>
+    ipcRenderer.invoke('scheduler:runNow'),
 
   onUpdateAvailable: (cb: (version: string) => void) => {
     const listener = (_: unknown, version: string) => cb(version);
@@ -77,6 +79,12 @@ const api = {
   /** Mark the backup as seen without restoring so the banner won't reappear. */
   dismissSyncBackup: (info: SyncAvailableInfo): Promise<void> =>
     ipcRenderer.invoke('remote:syncDismiss', info),
+  /** Fired when a sync backup has been auto-installed silently. */
+  onSyncApplied: (cb: (info: SyncAvailableInfo) => void) => {
+    const listener = (_: unknown, info: SyncAvailableInfo) => cb(info);
+    ipcRenderer.on('remote:syncApplied', listener);
+    return () => ipcRenderer.off('remote:syncApplied', listener);
+  },
 
   showInFolder: (absPath: string): Promise<void> =>
     ipcRenderer.invoke('shell:showInFolder', absPath),
