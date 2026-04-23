@@ -1,5 +1,41 @@
 import React, { useEffect, useState } from 'react';
-import type { AppConfig, RetentionMode, ScheduleMode, SchedulerStatus } from '../../shared/types';
+import type {
+  AppConfig,
+  RetentionMode,
+  ScheduleMode,
+  SchedulerStatus,
+  ThemePreference
+} from '../../shared/types';
+
+type SectionId = 'wow' | 'storage' | 'share' | 'sync' | 'schedule' | 'appearance';
+
+function Section({
+  id,
+  title,
+  open,
+  onToggle,
+  children
+}: {
+  id: SectionId;
+  title: string;
+  open: boolean;
+  onToggle: (id: SectionId) => void;
+  children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <div className="card">
+      <button
+        className="collapse-header"
+        aria-expanded={open}
+        onClick={() => onToggle(id)}
+      >
+        <h2>{title}</h2>
+        <span className="collapse-header__chevron">›</span>
+      </button>
+      {open && <div style={{ paddingTop: 6 }}>{children}</div>}
+    </div>
+  );
+}
 
 export function SettingsView({
   config,
@@ -13,6 +49,18 @@ export function SettingsView({
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
+  const [open, setOpen] = useState<Record<SectionId, boolean>>({
+    wow: true,
+    storage: true,
+    share: false,
+    sync: false,
+    schedule: false,
+    appearance: false
+  });
+
+  function toggleSection(id: SectionId): void {
+    setOpen((o) => ({ ...o, [id]: !o[id] }));
+  }
 
   useEffect(() => {
     window.api.getSchedulerStatus().then(setSchedulerStatus).catch(() => {});
@@ -21,6 +69,11 @@ export function SettingsView({
     }, 15000);
     return () => clearInterval(t);
   }, []);
+
+  // Sync in coming config prop (e.g. after external theme change) so draft matches.
+  useEffect(() => {
+    setDraft(config);
+  }, [config]);
 
   function refreshSchedulerStatus(): void {
     window.api.getSchedulerStatus().then(setSchedulerStatus).catch(() => {});
@@ -68,10 +121,16 @@ export function SettingsView({
     }
   }
 
+  async function setThemePref(pref: ThemePreference): Promise<void> {
+    setDraft({ ...draft, theme: pref });
+    // Apply immediately for snappy feedback; user can still hit Save for others.
+    await window.api.setConfig({ theme: pref });
+    await onConfigChange();
+  }
+
   return (
     <>
-      <div className="card">
-        <h2 style={{ marginTop: 0 }}>WoW</h2>
+      <Section id="wow" title="WoW install" open={open.wow} onToggle={toggleSection}>
         <div className="field">
           <label>Install root (contains _retail_, _classic_, …)</label>
           <div className="row">
@@ -79,14 +138,19 @@ export function SettingsView({
               type="text"
               className="grow"
               value={draft.wowInstallRoot}
-              onChange={(e) =>
-                setDraft({ ...draft, wowInstallRoot: e.target.value })
-              }
+              onChange={(e) => setDraft({ ...draft, wowInstallRoot: e.target.value })}
             />
             <button onClick={() => pick('wowInstallRoot')}>Browse…</button>
           </div>
         </div>
+      </Section>
 
+      <Section
+        id="storage"
+        title="Local storage & retention"
+        open={open.storage}
+        onToggle={toggleSection}
+      >
         <div className="field">
           <label>Local backup folder</label>
           <div className="row">
@@ -94,9 +158,7 @@ export function SettingsView({
               type="text"
               className="grow"
               value={draft.localBackupDir}
-              onChange={(e) =>
-                setDraft({ ...draft, localBackupDir: e.target.value })
-              }
+              onChange={(e) => setDraft({ ...draft, localBackupDir: e.target.value })}
             />
             <button onClick={() => pick('localBackupDir')}>Browse…</button>
           </div>
@@ -137,15 +199,18 @@ export function SettingsView({
             />
           </div>
         )}
-      </div>
+      </Section>
 
-      <div className="card">
-        <h2 style={{ marginTop: 0 }}>SMB share</h2>
-        <p className="muted">
-          The app uses your OS’s native SMB client to mount the share. On macOS
-          this is <code>mount_smbfs</code>; on Windows it uses{' '}
-          <code>net use</code>; on Linux it uses <code>mount -t cifs</code>{' '}
-          (cifs-utils required). Credentials are stored in{' '}
+      <Section
+        id="share"
+        title="SMB share"
+        open={open.share}
+        onToggle={toggleSection}
+      >
+        <p className="muted" style={{ marginTop: 0 }}>
+          The app uses your OS's native SMB client. On macOS this is{' '}
+          <code>mount_smbfs</code>; on Windows <code>net use</code>; on Linux{' '}
+          <code>mount -t cifs</code>. Credentials are stored in{' '}
           <code>config.json</code> in your user-data folder.
         </p>
 
@@ -168,10 +233,7 @@ export function SettingsView({
               placeholder="wowbackups"
               value={draft.smb.share}
               onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  smb: { ...draft.smb, share: e.target.value }
-                })
+                setDraft({ ...draft, smb: { ...draft.smb, share: e.target.value } })
               }
             />
           </div>
@@ -213,9 +275,7 @@ export function SettingsView({
               type="text"
               className="grow"
               placeholder={
-                navigator.platform.startsWith('Win')
-                  ? 'Z:'
-                  : '/Volumes/wowbackups'
+                navigator.platform.startsWith('Win') ? 'Z:' : '/Volumes/wowbackups'
               }
               value={draft.smb.mountPoint ?? ''}
               onChange={(e) =>
@@ -243,9 +303,6 @@ export function SettingsView({
             />
             Auto-mount share when the app starts
           </label>
-        </div>
-
-        <div className="checkbox-row">
           <label>
             <input
               type="checkbox"
@@ -257,10 +314,31 @@ export function SettingsView({
                 })
               }
             />
-            Auto-upload new backups to the mounted share after backup completes
+            Auto-upload new backups after they complete
           </label>
         </div>
 
+        <div className="row" style={{ marginTop: 12 }}>
+          <button
+            onClick={testMount}
+            disabled={testing || !draft.smb.host || !draft.smb.share}
+          >
+            {testing ? 'Testing…' : 'Test connection (mount now)'}
+          </button>
+          {testResult && (
+            <span className={`chip ${testResult.startsWith('Mounted') ? 'chip--ok' : 'chip--bad'}`}>
+              {testResult}
+            </span>
+          )}
+        </div>
+      </Section>
+
+      <Section
+        id="sync"
+        title="Cross-machine sync"
+        open={open.sync}
+        onToggle={toggleSection}
+      >
         <div className="checkbox-row">
           <label>
             <input
@@ -276,7 +354,7 @@ export function SettingsView({
 
         {draft.autoSyncFromRemote && (
           <>
-            <div className="field" style={{ marginTop: 8 }}>
+            <div className="field" style={{ marginTop: 10 }}>
               <label>Check frequency</label>
               <select
                 value={draft.syncIntervalMinutes ?? 240}
@@ -312,38 +390,17 @@ export function SettingsView({
             </div>
           </>
         )}
+      </Section>
 
-        <div className="row" style={{ marginTop: 12 }}>
-          <button
-            onClick={testMount}
-            disabled={testing || !draft.smb.host || !draft.smb.share}
-          >
-            {testing ? 'Testing…' : 'Test connection (mount now)'}
-          </button>
-          {testResult && (
-            <span
-              className={`status ${testResult.startsWith('Mounted') ? 'ok' : 'bad'}`}
-            >
-              {testResult}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div className="row">
-        <button className="primary" onClick={save} disabled={saving}>
-          {saving ? 'Saving…' : 'Save settings'}
-        </button>
-        <button onClick={() => setDraft(config)} disabled={saving}>
-          Reset
-        </button>
-      </div>
-
-      <div className="card">
-        <h2 style={{ marginTop: 0 }}>Scheduled backups</h2>
-        <p className="muted">
-          Automatically run backups on a schedule while the app is open.
-          Use the same flavors selected in the Backup tab.
+      <Section
+        id="schedule"
+        title="Scheduled backups"
+        open={open.schedule}
+        onToggle={toggleSection}
+      >
+        <p className="muted" style={{ marginTop: 0 }}>
+          Automatically run backups on a schedule while the app is open. Uses the
+          same flavors selected on the Backup tab.
         </p>
 
         <div className="checkbox-row">
@@ -401,7 +458,11 @@ export function SettingsView({
                 >
                   {[1, 2, 3, 4, 6, 8, 12, 24].map((h) => (
                     <option key={h} value={h}>
-                      {h === 1 ? 'Every hour' : h === 24 ? 'Every 24 hours (midnight)' : `Every ${h} hours`}
+                      {h === 1
+                        ? 'Every hour'
+                        : h === 24
+                          ? 'Every 24 hours (midnight)'
+                          : `Every ${h} hours`}
                     </option>
                   ))}
                 </select>
@@ -426,7 +487,9 @@ export function SettingsView({
 
             {draft.schedule.mode === 'custom' && (
               <div className="field">
-                <label>Cron expression (5-field, e.g. <code>0 */6 * * *</code>)</label>
+                <label>
+                  Cron expression (5-field, e.g. <code>0 */6 * * *</code>)
+                </label>
                 <input
                   type="text"
                   className="grow"
@@ -448,35 +511,45 @@ export function SettingsView({
             {schedulerStatus && (
               <div className="field" style={{ marginTop: 8 }}>
                 <label>Scheduler status</label>
-                <div className="muted" style={{ fontSize: '0.85em', lineHeight: 1.6 }}>
-                  <div>
-                    Active:{' '}
-                    <span className={schedulerStatus.running ? 'status ok' : 'status bad'}>
-                      {schedulerStatus.running ? 'running' : 'stopped'}
-                    </span>
-                  </div>
+                <div className="row" style={{ gap: 8 }}>
+                  <span className={`chip ${schedulerStatus.running ? 'chip--ok' : 'chip--bad'}`}>
+                    {schedulerStatus.running ? 'running' : 'stopped'}
+                  </span>
                   {schedulerStatus.cronExpression && (
-                    <div>
-                      Cron: <code>{schedulerStatus.cronExpression}</code>
-                    </div>
-                  )}
-                  {schedulerStatus.lastRunIso && (
-                    <div>Last run: {new Date(schedulerStatus.lastRunIso).toLocaleString()}</div>
-                  )}
-                  {schedulerStatus.nextRunIso && (
-                    <div>Next run: {new Date(schedulerStatus.nextRunIso).toLocaleString()}</div>
-                  )}
-                  {!schedulerStatus.nextRunIso && schedulerStatus.running && draft.schedule.mode === 'custom' && (
-                    <div>Next run: depends on cron expression</div>
-                  )}
-                  {schedulerStatus.lastError && (
-                    <div className="status bad" style={{ marginTop: 6 }}>
-                      Last error{schedulerStatus.lastErrorIso
-                        ? ` (${new Date(schedulerStatus.lastErrorIso).toLocaleString()})`
-                        : ''}: {schedulerStatus.lastError}
-                    </div>
+                    <span className="chip chip--muted">
+                      cron <code>{schedulerStatus.cronExpression}</code>
+                    </span>
                   )}
                 </div>
+                <div
+                  className="muted"
+                  style={{ fontSize: '0.85em', lineHeight: 1.6, marginTop: 8 }}
+                >
+                  {schedulerStatus.lastRunIso && (
+                    <div>
+                      Last run: {new Date(schedulerStatus.lastRunIso).toLocaleString()}
+                    </div>
+                  )}
+                  {schedulerStatus.nextRunIso && (
+                    <div>
+                      Next run: {new Date(schedulerStatus.nextRunIso).toLocaleString()}
+                    </div>
+                  )}
+                  {!schedulerStatus.nextRunIso &&
+                    schedulerStatus.running &&
+                    draft.schedule.mode === 'custom' && (
+                      <div>Next run: depends on cron expression</div>
+                    )}
+                </div>
+                {schedulerStatus.lastError && (
+                  <div className="chip chip--bad" style={{ marginTop: 6 }}>
+                    Last error
+                    {schedulerStatus.lastErrorIso
+                      ? ` (${new Date(schedulerStatus.lastErrorIso).toLocaleString()})`
+                      : ''}
+                    : {schedulerStatus.lastError}
+                  </div>
+                )}
                 <div className="row" style={{ marginTop: 8 }}>
                   <button
                     className="small"
@@ -495,6 +568,41 @@ export function SettingsView({
             )}
           </>
         )}
+      </Section>
+
+      <Section
+        id="appearance"
+        title="Appearance"
+        open={open.appearance}
+        onToggle={toggleSection}
+      >
+        <div className="field">
+          <label>Theme</label>
+          <div className="theme-toggle" role="group" aria-label="Theme preference">
+            {(['light', 'system', 'dark'] as ThemePreference[]).map((p) => (
+              <button
+                key={p}
+                aria-pressed={(draft.theme ?? 'system') === p}
+                onClick={() => setThemePref(p)}
+              >
+                {p === 'light' ? 'Light' : p === 'dark' ? 'Dark' : 'Auto'}
+              </button>
+            ))}
+          </div>
+          <p className="muted" style={{ marginTop: 8 }}>
+            "Auto" follows your operating system. Theme changes apply instantly and
+            persist across restarts.
+          </p>
+        </div>
+      </Section>
+
+      <div className="row" style={{ marginTop: 4 }}>
+        <button className="primary" onClick={save} disabled={saving}>
+          {saving ? 'Saving…' : 'Save settings'}
+        </button>
+        <button onClick={() => setDraft(config)} disabled={saving}>
+          Reset
+        </button>
       </div>
     </>
   );

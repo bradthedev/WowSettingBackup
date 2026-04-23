@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import type { BackupFile } from '../../shared/types';
-import { Empty, formatBytes, formatDate } from '../components/format';
+import { Empty, Skeleton, formatBytes, formatDate } from '../components/format';
 import { MetaDetails } from '../components/MetaDetails';
 
 export function DownloadView({ mounted }: { mounted: boolean }): JSX.Element {
-  const [remote, setRemote] = useState<BackupFile[]>([]);
+  const [remote, setRemote] = useState<BackupFile[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -13,6 +13,7 @@ export function DownloadView({ mounted }: { mounted: boolean }): JSX.Element {
       setRemote([]);
       return;
     }
+    setRemote(null);
     try {
       setRemote(await window.api.listRemoteBackups());
     } catch (err) {
@@ -78,34 +79,42 @@ export function DownloadView({ mounted }: { mounted: boolean }): JSX.Element {
     }
   }
 
+  const list = remote ?? [];
+
   return (
     <>
       <div className="card">
-        <h2 style={{ marginTop: 0 }}>Download & restore from SMB share</h2>
+        <div className="row" style={{ marginBottom: 10 }}>
+          <h2 style={{ margin: 0 }}>Download &amp; restore</h2>
+          <span className={`chip ${mounted ? 'chip--ok' : 'chip--bad'}`}>
+            {mounted ? 'Share mounted' : 'Share offline'}
+          </span>
+          <span className="chip chip--muted right">
+            {remote === null ? '…' : `${list.length} available`}
+          </span>
+        </div>
         {!mounted && (
-          <p className="muted">
-            The remote share is not mounted. Mount it from the sidebar first.
+          <p className="muted" style={{ margin: '0 0 10px' }}>
+            Mount the remote share from the header to list backups from other
+            machines.
           </p>
         )}
         <div className="row">
-          <button
-            className="primary"
-            onClick={refresh}
-            disabled={!mounted || busy}
-          >
+          <button className="primary" onClick={refresh} disabled={!mounted || busy}>
             Refresh remote list
           </button>
           <button onClick={rebuildIndex} disabled={!mounted || busy}>
             Rebuild server index
           </button>
-          <span className="muted right">{remote.length} available</span>
         </div>
       </div>
 
       <div className="card">
-        <h3 style={{ marginTop: 0 }}>Remote backups</h3>
-        {remote.length === 0 ? (
-          <Empty>
+        <h3>Remote backups</h3>
+        {remote === null ? (
+          <Skeleton rows={4} />
+        ) : list.length === 0 ? (
+          <Empty icon="☁">
             {mounted
               ? 'No backups found on the share.'
               : 'Mount the share to list backups.'}
@@ -124,7 +133,7 @@ export function DownloadView({ mounted }: { mounted: boolean }): JSX.Element {
               </tr>
             </thead>
             <tbody>
-              {remote.map((b) => {
+              {list.map((b) => {
                 const open = expanded.has(b.name);
                 const src = b.meta?.source;
                 return (
@@ -132,16 +141,17 @@ export function DownloadView({ mounted }: { mounted: boolean }): JSX.Element {
                     <tr>
                       <td>
                         <button
-                          className="small"
+                          className="small icon-btn ghost"
                           onClick={() => toggle(b.name)}
                           title={open ? 'Hide details' : 'Show details'}
-                          style={{ minWidth: 28 }}
                         >
                           {open ? '−' : '+'}
                         </button>
                       </td>
                       <td style={{ wordBreak: 'break-all' }}>{b.name}</td>
-                      <td>{b.flavor}</td>
+                      <td>
+                        <code>{b.flavor}</code>
+                      </td>
                       <td>
                         {src ? (
                           <>
@@ -171,7 +181,7 @@ export function DownloadView({ mounted }: { mounted: boolean }): JSX.Element {
                           disabled={busy}
                           onClick={() => downloadAndRestore(b.name)}
                         >
-                          Download & restore
+                          Download &amp; restore
                         </button>
                       </td>
                     </tr>

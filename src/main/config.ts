@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { AppConfig, RetentionMode, ScheduleConfig, WowFlavor } from '../shared/types';
+import type { AppConfig, RetentionMode, ScheduleConfig, ThemePreference, WowFlavor } from '../shared/types';
 import { WOW_FLAVORS } from '../shared/types';
 
 const CONFIG_FILE = 'config.json';
@@ -57,7 +57,8 @@ export function defaultConfig(): AppConfig {
     },
     autoSyncFromRemote: false,
     syncIntervalMinutes: 240,
-    autoInstallSyncBackup: false
+    autoInstallSyncBackup: false,
+    theme: 'system'
   };
 }
 
@@ -107,6 +108,10 @@ function sanitize(raw: Partial<AppConfig>): AppConfig {
   }
   if (typeof merged.autoInstallSyncBackup !== 'boolean') {
     merged.autoInstallSyncBackup = false;
+  }
+  const ALLOWED_THEMES: ThemePreference[] = ['dark', 'light', 'system'];
+  if (!ALLOWED_THEMES.includes(merged.theme)) {
+    merged.theme = 'system';
   }
   return merged;
 }

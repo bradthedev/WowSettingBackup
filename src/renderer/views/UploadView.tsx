@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import type { BackupFile } from '../../shared/types';
-import { Empty, formatBytes, formatDate } from '../components/format';
+import { Empty, Skeleton, formatBytes, formatDate } from '../components/format';
 
 export function UploadView({ mounted }: { mounted: boolean }): JSX.Element {
-  const [local, setLocal] = useState<BackupFile[]>([]);
+  const [local, setLocal] = useState<BackupFile[] | null>(null);
   const [remote, setRemote] = useState<BackupFile[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -26,7 +26,9 @@ export function UploadView({ mounted }: { mounted: boolean }): JSX.Element {
   }, [mounted]);
 
   const remoteNames = new Set(remote.map((r) => r.name));
-  const uploadable = local.filter((b) => b.name.endsWith('.zip'));
+  const localList = local ?? [];
+  const uploadable = localList.filter((b) => b.name.endsWith('.zip'));
+  const missingCount = uploadable.filter((b) => !remoteNames.has(b.name)).length;
 
   async function uploadAll(): Promise<void> {
     setBusy(true);
@@ -59,33 +61,41 @@ export function UploadView({ mounted }: { mounted: boolean }): JSX.Element {
   return (
     <>
       <div className="card">
-        <h2 style={{ marginTop: 0 }}>Upload local backups to SMB share</h2>
+        <div className="row" style={{ marginBottom: 10 }}>
+          <h2 style={{ margin: 0 }}>Upload to share</h2>
+          <span className={`chip ${mounted ? 'chip--ok' : 'chip--bad'}`}>
+            {mounted ? 'Share mounted' : 'Share offline'}
+          </span>
+          <span className="chip chip--muted right">
+            {localList.length} local · {remote.length} remote
+          </span>
+        </div>
         {!mounted && (
-          <p className="muted">
-            The remote share is not mounted. Mount it from the sidebar first.
+          <p className="muted" style={{ margin: '0 0 10px' }}>
+            The remote share is not mounted. Use the Mount button in the header to
+            connect first.
           </p>
         )}
         <div className="row">
           <button
             className="primary"
-            disabled={!mounted || busy || uploadable.length === 0}
+            disabled={!mounted || busy || missingCount === 0}
             onClick={uploadAll}
           >
-            {busy ? 'Uploading…' : 'Upload all missing'}
+            {busy ? 'Uploading…' : `Upload all missing (${missingCount})`}
           </button>
           <button onClick={refresh} disabled={busy}>
             Refresh
           </button>
-          <span className="muted right">
-            {local.length} local · {remote.length} remote
-          </span>
         </div>
       </div>
 
       <div className="card">
-        <h3 style={{ marginTop: 0 }}>Local backups</h3>
-        {local.length === 0 ? (
-          <Empty>Nothing to upload — create a backup first.</Empty>
+        <h3>Local backups</h3>
+        {local === null ? (
+          <Skeleton rows={3} />
+        ) : localList.length === 0 ? (
+          <Empty icon="↑">Nothing to upload — create a backup first.</Empty>
         ) : (
           <table>
             <thead>
@@ -98,7 +108,7 @@ export function UploadView({ mounted }: { mounted: boolean }): JSX.Element {
               </tr>
             </thead>
             <tbody>
-              {local.map((b) => {
+              {localList.map((b) => {
                 const exists = remoteNames.has(b.name);
                 return (
                   <tr key={b.path}>
@@ -106,7 +116,7 @@ export function UploadView({ mounted }: { mounted: boolean }): JSX.Element {
                     <td>{formatBytes(b.sizeBytes)}</td>
                     <td>{formatDate(b.createdAtIso)}</td>
                     <td>
-                      <span className={`status ${exists ? 'ok' : 'bad'}`}>
+                      <span className={`chip ${exists ? 'chip--ok' : 'chip--warn'}`}>
                         {exists ? 'present' : 'missing'}
                       </span>
                     </td>

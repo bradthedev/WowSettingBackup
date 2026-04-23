@@ -99,7 +99,11 @@ export interface AppConfig {
    * restored silently without prompting. Requires `autoSyncFromRemote`.
    */
   autoInstallSyncBackup: boolean;
+  /** UI theme preference. `system` follows the OS. */
+  theme: ThemePreference;
 }
+
+export type ThemePreference = 'dark' | 'light' | 'system';
 
 export interface BackupFile {
   /** Absolute path on disk. */
@@ -221,4 +225,5 @@ export type IpcChannel =
   | 'shell:openPath'
   | 'remote:meta'
   | 'remote:rebuildIndex'
+  | 'theme:resolved'
   | 'progress';

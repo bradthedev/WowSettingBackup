@@ -91,6 +91,13 @@ const api = {
   openPath: (absPath: string): Promise<string> =>
     ipcRenderer.invoke('shell:openPath', absPath),
 
+  /** Fired whenever the main process resolves the effective theme (light|dark). */
+  onThemeResolved: (cb: (theme: 'dark' | 'light') => void) => {
+    const listener = (_: unknown, theme: 'dark' | 'light') => cb(theme);
+    ipcRenderer.on('theme:resolved', listener);
+    return () => ipcRenderer.off('theme:resolved', listener);
+  },
+
   onProgress: (cb: (e: ProgressEvent) => void) => {
     const listener = (_: unknown, e: ProgressEvent) => cb(e);
     ipcRenderer.on('progress', listener);

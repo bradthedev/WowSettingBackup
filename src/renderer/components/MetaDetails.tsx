@@ -18,15 +18,16 @@ export function MetaDetails({
   return (
     <div
       style={{
-        background: 'var(--panel-2)',
-        borderRadius: 6,
-        padding: 12,
+        background: 'var(--panel-strong)',
+        border: '1px solid var(--border)',
+        borderRadius: 10,
+        padding: 14,
         margin: '6px 0',
         fontSize: 13,
         display: 'grid',
         gridTemplateColumns: '160px 1fr',
-        rowGap: 4,
-        columnGap: 12
+        rowGap: 6,
+        columnGap: 14
       }}
     >
       <div className="muted">Source machine</div>
