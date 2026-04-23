@@ -47,6 +47,23 @@ const api = {
   getSchedulerStatus: (): Promise<SchedulerStatus> =>
     ipcRenderer.invoke('scheduler:getStatus'),
 
+  onUpdateAvailable: (cb: (version: string) => void) => {
+    const listener = (_: unknown, version: string) => cb(version);
+    ipcRenderer.on('update:available', listener);
+    return () => ipcRenderer.off('update:available', listener);
+  },
+  onUpdateProgress: (cb: (percent: number) => void) => {
+    const listener = (_: unknown, percent: number) => cb(percent);
+    ipcRenderer.on('update:progress', listener);
+    return () => ipcRenderer.off('update:progress', listener);
+  },
+  onUpdateDownloaded: (cb: (version: string) => void) => {
+    const listener = (_: unknown, version: string) => cb(version);
+    ipcRenderer.on('update:downloaded', listener);
+    return () => ipcRenderer.off('update:downloaded', listener);
+  },
+  installUpdate: (): Promise<void> => ipcRenderer.invoke('update:install'),
+
   showInFolder: (absPath: string): Promise<void> =>
     ipcRenderer.invoke('shell:showInFolder', absPath),
   openPath: (absPath: string): Promise<string> =>
