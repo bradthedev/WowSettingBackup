@@ -1,6 +1,6 @@
 {
   "name": "wow-settings-backup",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Backup, sync, and restore World of Warcraft AddOns across machines via an SMB share.",
   "main": "dist/main/index.js",
   "author": "",
@@ -20,7 +20,8 @@
   "dependencies": {
     "archiver": "^7.0.1",
     "electron-store": "^8.2.0",
-    "extract-zip": "^2.0.1"
+    "extract-zip": "^2.0.1",
+    "node-cron": "^4.2.1"
   },
   "devDependencies": {
     "@types/archiver": "^6.0.2",
@@ -50,20 +51,41 @@
     ],
     "mac": {
       "target": [
-        { "target": "dmg", "arch": ["arm64", "x64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ],
       "category": "public.app-category.utilities",
       "identity": null
     },
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "signingHashAlgorithms": [],
       "sign": null
     },
     "linux": {
       "target": "AppImage"
+    },
+    "publish": {
+      "provider": "github",
+      "releaseType": "release"
     }
   }
 }

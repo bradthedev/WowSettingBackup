@@ -1,7 +1,7 @@
 import { app } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
-import type { AppConfig, WowFlavor } from '../shared/types';
+import type { AppConfig, RetentionMode, ScheduleConfig, WowFlavor } from '../shared/types';
 import { WOW_FLAVORS } from '../shared/types';
 
 const CONFIG_FILE = 'config.json';
@@ -38,6 +38,7 @@ export function defaultConfig(): AppConfig {
     enabledFlavors: ['_retail_'] as WowFlavor[],
     localBackupDir: defaultLocalBackupDir(),
     retentionCount: 10,
+    retentionMode: 'time-machine' as RetentionMode,
     smb: {
       host: '',
       share: '',
@@ -46,8 +47,30 @@ export function defaultConfig(): AppConfig {
       mountPoint: defaultMountPoint(),
       autoMountOnLaunch: false,
       autoUploadAfterBackup: false
+    },
+    schedule: {
+      enabled: false,
+      mode: 'interval',
+      intervalHours: 6,
+      dailyTime: '02:00',
+      cronExpression: ''
     }
   };
+}
+
+function sanitizeSchedule(raw: Partial<ScheduleConfig>): ScheduleConfig {
+  const base = defaultConfig().schedule;
+  const merged: ScheduleConfig = { ...base, ...raw };
+  if (!['interval', 'daily', 'custom'].includes(merged.mode)) {
+    merged.mode = 'interval';
+  }
+  if (!Number.isFinite(merged.intervalHours) || merged.intervalHours < 1) {
+    merged.intervalHours = 6;
+  }
+  if (!/^\d{1,2}:\d{2}$/.test(merged.dailyTime)) {
+    merged.dailyTime = '02:00';
+  }
+  return merged;
 }
 
 function sanitize(raw: Partial<AppConfig>): AppConfig {
@@ -55,7 +78,8 @@ function sanitize(raw: Partial<AppConfig>): AppConfig {
   const merged: AppConfig = {
     ...base,
     ...raw,
-    smb: { ...base.smb, ...(raw.smb ?? {}) }
+    smb: { ...base.smb, ...(raw.smb ?? {}) },
+    schedule: sanitizeSchedule(raw.schedule ?? {})
   };
   // Filter to known flavors only.
   merged.enabledFlavors = (merged.enabledFlavors ?? []).filter((f) =>
@@ -64,6 +88,9 @@ function sanitize(raw: Partial<AppConfig>): AppConfig {
   if (merged.enabledFlavors.length === 0) merged.enabledFlavors = ['_retail_'];
   if (!Number.isFinite(merged.retentionCount) || merged.retentionCount < 1) {
     merged.retentionCount = 10;
+  }
+  if (!(['time-machine', 'count'] as RetentionMode[]).includes(merged.retentionMode)) {
+    merged.retentionMode = 'time-machine';
   }
   return merged;
 }
@@ -100,6 +127,7 @@ export function patchConfig(patch: Partial<AppConfig>): AppConfig {
   return saveConfig({
     ...current,
     ...patch,
-    smb: { ...current.smb, ...(patch.smb ?? {}) }
+    smb: { ...current.smb, ...(patch.smb ?? {}) },
+    schedule: { ...current.schedule, ...(patch.schedule ?? {}) }
   });
 }

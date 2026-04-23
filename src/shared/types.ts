@@ -6,6 +6,12 @@ export type WowFlavor =
   | '_beta_'
   | '_classic_ptr_';
 
+export type RetentionMode =
+  /** Keep all backups from the last 7 days, 1/week for a month, 1/month for a year, 1/year beyond. */
+  | 'time-machine'
+  /** Simply keep the N most recent backups per flavor. */
+  | 'count';
+
 export const WOW_FLAVORS: WowFlavor[] = [
   '_retail_',
   '_classic_',
@@ -31,6 +37,30 @@ export interface SmbMountConfig {
   autoUploadAfterBackup: boolean;
 }
 
+export type ScheduleMode = 'interval' | 'daily' | 'custom';
+
+export interface ScheduleConfig {
+  /** Whether scheduled automatic backups are enabled. */
+  enabled: boolean;
+  /** Which scheduling mode to use. */
+  mode: ScheduleMode;
+  /** For 'interval' mode: hours between backups (e.g. 1, 2, 4, 6, 12, 24). */
+  intervalHours: number;
+  /** For 'daily' mode: time in "HH:MM" 24-hour format (e.g. "02:00"). */
+  dailyTime: string;
+  /** For 'custom' mode: a standard 5-field cron expression (e.g. "0 * /6 * * *" without the space). */
+  cronExpression: string;
+}
+
+export interface SchedulerStatus {
+  /** Whether the scheduler is currently active. */
+  running: boolean;
+  /** ISO string of the last completed backup run, if any. */
+  lastRunIso?: string;
+  /** ISO string of the next scheduled run, if known. */
+  nextRunIso?: string;
+}
+
 export interface AppConfig {
   /** Path to the WoW install root (the folder that contains _retail_, _classic_, etc.) */
   wowInstallRoot: string;
@@ -38,10 +68,14 @@ export interface AppConfig {
   enabledFlavors: WowFlavor[];
   /** Local folder where backup .zip files are written. */
   localBackupDir: string;
-  /** How many backups to keep per flavor before pruning the oldest. */
+  /** How many backups to keep per flavor before pruning the oldest (used when retentionMode = 'count'). */
   retentionCount: number;
+  /** Which retention strategy to use: Time Machine style tiers or a simple fixed count. */
+  retentionMode: RetentionMode;
   /** SMB share config + auto-mount toggle. */
   smb: SmbMountConfig;
+  /** Automatic scheduled backup configuration. */
+  schedule: ScheduleConfig;
 }
 
 export interface BackupFile {
@@ -138,4 +172,5 @@ export type IpcChannel =
   | 'remote:upload'
   | 'remote:download'
   | 'restore:fromZip'
+  | 'scheduler:getStatus'
   | 'progress';
