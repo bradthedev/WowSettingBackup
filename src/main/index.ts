@@ -10,6 +10,7 @@ import { restoreFromZip } from './restore';
 import { rebuildIndex } from './metadata';
 import { startScheduler, updateScheduler, getSchedulerStatus, runScheduledBackupNow } from './scheduler';
 import { checkRemoteSync, applySyncBackup, dismissSyncBackup } from './sync';
+import { listJobs, recordJobRun, setJobEnabled, setJobNextRun } from './jobs';
 import { setupTray } from './tray';
 import type { AppConfig, SyncAvailableInfo, ThemePreference, WowFlavor } from '../shared/types';
 
@@ -233,6 +234,23 @@ function registerIpc(): void {
     autoUpdater.quitAndInstall();
   });
 
+  ipcMain.handle('update:checkNow', async () => {
+    try {
+      const result = await autoUpdater.checkForUpdates();
+      const version = result?.updateInfo?.version;
+      const msg = version ? `Latest available: ${version}` : 'No update info';
+      recordJobRun('updater-check', 'ok', msg);
+      scheduleNextUpdaterCheck();
+      return { ok: true, message: msg };
+    } catch (err) {
+      const msg = (err as Error).message;
+      recordJobRun('updater-check', 'error', msg);
+      return { ok: false, message: msg };
+    }
+  });
+
+  ipcMain.handle('jobs:getStatus', () => listJobs());
+
   ipcMain.handle('shell:showInFolder', (_e, absPath: string) => {
     shell.showItemInFolder(absPath);
   });
@@ -256,27 +274,43 @@ let syncTimer: NodeJS.Timeout | null = null;
 async function runRemoteSyncCheck(): Promise<void> {
   try {
     const cfg = loadConfig();
-    if (!cfg.autoSyncFromRemote) return;
+    if (!cfg.autoSyncFromRemote) {
+      recordJobRun('sync-poll', 'skipped', 'Disabled in settings');
+      return;
+    }
 
     const items = await checkRemoteSync();
-    if (items.length === 0) return;
+    if (items.length === 0) {
+      recordJobRun('sync-poll', 'ok', 'No newer remote backups');
+      return;
+    }
 
     if (cfg.autoInstallSyncBackup) {
       // Silently download + restore each newer backup. The renderer still
       // gets progress events from the download/restore operations.
+      let applied = 0;
       for (const item of items) {
         try {
           await applySyncBackup(item);
           mainWindow?.webContents.send('remote:syncApplied', item);
+          applied += 1;
         } catch (err) {
           console.error('[sync] auto-install failed for', item.remoteName, err);
         }
       }
+      recordJobRun('sync-poll', 'ok', `Auto-installed ${applied} of ${items.length}`);
     } else {
       mainWindow?.webContents.send('remote:syncAvailable', items);
+      recordJobRun(
+        'sync-poll',
+        'ok',
+        `${items.length} newer backup(s) available`
+      );
     }
   } catch (err) {
+    const msg = (err as Error).message;
     console.error('Remote sync check error:', err);
+    recordJobRun('sync-poll', 'error', msg);
   }
 }
 
@@ -290,10 +324,19 @@ function restartRemoteSyncTimer(): void {
     syncTimer = null;
   }
   const cfg = loadConfig();
-  if (!cfg.autoSyncFromRemote) return;
+  if (!cfg.autoSyncFromRemote) {
+    setJobEnabled('sync-poll', false);
+    setJobNextRun('sync-poll', null);
+    return;
+  }
   const minutes = cfg.syncIntervalMinutes || 240;
   const ms = minutes * 60 * 1000;
-  syncTimer = setInterval(() => runRemoteSyncCheck(), ms);
+  syncTimer = setInterval(() => {
+    runRemoteSyncCheck();
+    setJobNextRun('sync-poll', new Date(Date.now() + ms).toISOString());
+  }, ms);
+  setJobEnabled('sync-poll', true);
+  setJobNextRun('sync-poll', new Date(Date.now() + ms).toISOString());
 }
 
 function setupRemoteSync(): void {
@@ -305,6 +348,27 @@ function setupRemoteSync(): void {
 // ---------------------------------------------------------------------------
 // Auto-updater (GitHub Releases via electron-updater)
 // ---------------------------------------------------------------------------
+
+const UPDATER_INTERVAL_MS = 4 * 60 * 60 * 1_000; // 4 hours
+let updaterTimer: NodeJS.Timeout | null = null;
+
+/** Schedule the next periodic update check and update the jobs registry. */
+function scheduleNextUpdaterCheck(): void {
+  if (updaterTimer) clearTimeout(updaterTimer);
+  updaterTimer = setTimeout(async () => {
+    try {
+      await autoUpdater.checkForUpdates();
+      recordJobRun('updater-check', 'ok', 'Periodic check');
+    } catch (err) {
+      recordJobRun('updater-check', 'error', (err as Error).message);
+    }
+    scheduleNextUpdaterCheck();
+  }, UPDATER_INTERVAL_MS);
+  setJobNextRun(
+    'updater-check',
+    new Date(Date.now() + UPDATER_INTERVAL_MS).toISOString()
+  );
+}
 
 function setupAutoUpdater(): void {
   autoUpdater.autoDownload = true;
@@ -326,9 +390,18 @@ function setupAutoUpdater(): void {
     console.error('Auto-updater error:', err.message);
   });
 
-  // Check 5 s after launch so startup is not delayed, then every 4 hours.
-  setTimeout(() => autoUpdater.checkForUpdates().catch(console.error), 5_000);
-  setInterval(() => autoUpdater.checkForUpdates().catch(console.error), 4 * 60 * 60 * 1_000);
+  setJobEnabled('updater-check', true);
+
+  // Initial check 5 s after launch so startup is not delayed.
+  setTimeout(async () => {
+    try {
+      await autoUpdater.checkForUpdates();
+      recordJobRun('updater-check', 'ok', 'Initial check');
+    } catch (err) {
+      recordJobRun('updater-check', 'error', (err as Error).message);
+    }
+    scheduleNextUpdaterCheck();
+  }, 5_000);
 }
 
 // ---------------------------------------------------------------------------
@@ -344,9 +417,28 @@ app.whenReady().then(async () => {
 
   const cfg = loadConfig();
   if (cfg.smb.autoMountOnLaunch && cfg.smb.host && cfg.smb.share) {
-    mountShare().catch((err) =>
-      console.warn('Auto-mount failed:', err)
-    );
+    setJobEnabled('auto-mount', true);
+    mountShare()
+      .then((res) => {
+        recordJobRun(
+          'auto-mount',
+          res.mounted ? 'ok' : 'error',
+          res.mounted
+            ? `Mounted at ${res.mountPath ?? 'share'}`
+            : res.message ?? 'Mount failed'
+        );
+      })
+      .catch((err) => {
+        console.warn('Auto-mount failed:', err);
+        recordJobRun('auto-mount', 'error', (err as Error).message);
+      });
+  } else {
+    setJobEnabled('auto-mount', false);
+    if (!cfg.smb.autoMountOnLaunch) {
+      recordJobRun('auto-mount', 'skipped', 'Disabled in settings');
+    } else {
+      recordJobRun('auto-mount', 'skipped', 'Share not configured');
+    }
   }
 
   // Start the scheduled backup timer if enabled

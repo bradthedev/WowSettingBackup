@@ -4,6 +4,7 @@ import type {
   BackupFile,
   BackupRunResult,
   BackupMeta,
+  JobStatus,
   MountStatus,
   ProgressEvent,
   RemoteIndex,
@@ -66,6 +67,18 @@ const api = {
     return () => ipcRenderer.off('update:downloaded', listener);
   },
   installUpdate: (): Promise<void> => ipcRenderer.invoke('update:install'),
+  /** Trigger an immediate update check (manual "Check now" button). */
+  checkForUpdatesNow: (): Promise<{ ok: boolean; message?: string }> =>
+    ipcRenderer.invoke('update:checkNow'),
+
+  /** Snapshot of all background-job statuses (scheduler, sync-poll, updater, auto-mount). */
+  getJobs: (): Promise<JobStatus[]> => ipcRenderer.invoke('jobs:getStatus'),
+  /** Fired whenever any job's status changes. */
+  onJobsUpdated: (cb: (jobs: JobStatus[]) => void) => {
+    const listener = (_: unknown, jobs: JobStatus[]) => cb(jobs);
+    ipcRenderer.on('jobs:updated', listener);
+    return () => ipcRenderer.off('jobs:updated', listener);
+  },
 
   /** Called when the main process detects newer remote backups from other machines. */
   onSyncAvailable: (cb: (items: SyncAvailableInfo[]) => void) => {

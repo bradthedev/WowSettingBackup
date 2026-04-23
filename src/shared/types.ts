@@ -67,6 +67,33 @@ export interface SchedulerStatus {
   lastErrorIso?: string;
 }
 
+/** Outcome of the most recent run of a periodic job. */
+export type JobRunResult = 'ok' | 'error' | 'skipped';
+
+/** Generic last-ran status for a periodic background job. */
+export interface JobStatus {
+  /** Stable identifier for the job (e.g. 'sync-poll'). */
+  id: JobId;
+  /** Display label. */
+  label: string;
+  /** Whether the timer/loop for this job is currently active. */
+  enabled: boolean;
+  /** ISO of the last attempted run, regardless of outcome. */
+  lastRunIso?: string;
+  /** Outcome of the last run. */
+  lastResult?: JobRunResult;
+  /** Optional human-readable detail about the last run (e.g. "no newer backups"). */
+  lastMessage?: string;
+  /** ISO of the next scheduled run, if known. */
+  nextRunIso?: string;
+}
+
+export type JobId =
+  | 'scheduler'
+  | 'sync-poll'
+  | 'updater-check'
+  | 'auto-mount';
+
 export interface AppConfig {
   /** Path to the WoW install root (the folder that contains _retail_, _classic_, etc.) */
   wowInstallRoot: string;
@@ -226,4 +253,7 @@ export type IpcChannel =
   | 'remote:meta'
   | 'remote:rebuildIndex'
   | 'theme:resolved'
+  | 'jobs:getStatus'
+  | 'jobs:updated'
+  | 'update:checkNow'
   | 'progress';
