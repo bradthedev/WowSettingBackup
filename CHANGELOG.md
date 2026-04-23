@@ -4,6 +4,18 @@ All notable changes to WoW Settings Backup are documented here.
 
 ---
 
+## [0.3.1] — 2026-04-23
+
+### Fixed
+
+- macOS release artifacts now include a `.zip` alongside the `.dmg` for each
+  architecture (arm64, x64). Both are unsigned; see the release notes for
+  Gatekeeper bypass instructions.
+- GitHub Release notes now include a macOS installation note explaining how to
+  open an unsigned app via right-click → Open, `xattr`, or System Settings.
+
+---
+
 ## [0.3.0] — 2026-04-23
 
 ### Added

@@ -30,9 +30,27 @@ jobs:
               print(f"Version {version} not found in CHANGELOG.md", file=sys.stderr)
               sys.exit(1)
           notes = m.group(1).strip()
+          mac_note = """
+---
+
+### macOS installation note
+
+macOS will block the app on first launch because the builds are unsigned.
+
+**Option 1 — right-click workaround (no Terminal needed)**
+Right-click (or Control-click) the app → **Open** → click **Open** in the dialog.
+
+**Option 2 — remove the quarantine flag**
+```
+xattr -rd com.apple.quarantine "/Applications/WoW Settings Backup.app"
+```
+
+**Option 3 — System Settings**
+System Settings → Privacy & Security → scroll to the blocked-app notice → **Open Anyway**.
+"""
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
               out.write("notes<<EOF_NOTES\n")
-              out.write(notes + "\n")
+              out.write(notes + mac_note + "\n")
               out.write("EOF_NOTES\n")
           PYEOF
 
