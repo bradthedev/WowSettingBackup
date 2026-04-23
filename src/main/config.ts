@@ -55,7 +55,9 @@ export function defaultConfig(): AppConfig {
       dailyTime: '02:00',
       cronExpression: ''
     },
-    autoSyncFromRemote: false
+    autoSyncFromRemote: false,
+    syncIntervalMinutes: 240,
+    autoInstallSyncBackup: false
   };
 }
 
@@ -95,6 +97,16 @@ function sanitize(raw: Partial<AppConfig>): AppConfig {
   }
   if (typeof merged.autoSyncFromRemote !== 'boolean') {
     merged.autoSyncFromRemote = false;
+  }
+  const ALLOWED_SYNC_INTERVALS = [5, 15, 30, 60, 120, 240, 720, 1440];
+  if (
+    !Number.isFinite(merged.syncIntervalMinutes) ||
+    !ALLOWED_SYNC_INTERVALS.includes(merged.syncIntervalMinutes)
+  ) {
+    merged.syncIntervalMinutes = 240;
+  }
+  if (typeof merged.autoInstallSyncBackup !== 'boolean') {
+    merged.autoInstallSyncBackup = false;
   }
   return merged;
 }

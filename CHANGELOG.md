@@ -4,6 +4,35 @@ All notable changes to WoW Settings Backup are documented here.
 
 ---
 
+## [0.3.6] — 2026-04-23
+
+### Fixed
+
+- **Scheduled backups now fire.** The `node-cron` v4 upgrade silently broke the
+  scheduler — tasks must now be explicitly `.start()`'d, but the code still
+  assumed v3's auto-start behaviour. Scheduled runs now actually execute on
+  time.
+- **Activity panel no longer gets stuck.** Completed and error events now
+  fade out of the panel 6 seconds after they finish, so old events don't pile
+  up and block new ones from being visible.
+
+### Added
+
+- **Configurable sync check frequency** — pick from 5 min up to 24 h in
+  Settings (default 4 h).
+- **Auto-install newer backups** — new opt-in toggle under Settings lets the
+  app silently download and restore newer remote backups without prompting.
+  Off by default; requires *Check remote share for newer backups* to be on.
+- **Scheduler diagnostics** — the Settings page now shows the resolved cron
+  expression and the last scheduled-run error (with timestamp) so failures
+  are visible instead of hidden in the logs.
+- **Run scheduled backup now** button in Settings lets you trigger a scheduled
+  run on demand for testing.
+- Scheduler status auto-refreshes every 15 seconds while the Settings tab is
+  open so the *Next run* display stays accurate.
+
+---
+
 ## [0.3.5] — 2026-04-23
 
 ### Added

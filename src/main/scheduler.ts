@@ -45,6 +45,9 @@ function saveState(state: SchedulerState): void {
 let task: ScheduledTask | null = null;
 let lastRunIso: string | null = null;
 let nextRunIso: string | null = null;
+let currentCron: string | null = null;
+let lastError: string | null = null;
+let lastErrorIso: string | null = null;
 
 // ---------------------------------------------------------------------------
 // Cron expression helpers
@@ -78,47 +81,6 @@ export function scheduleToCron(schedule: ScheduleConfig): string | null {
 }
 
 /**
- * Compute a best-effort ISO string for the next occurrence of a schedule,
- * starting from `from` (defaults to now).
- */
-export function computeNextRun(
-  schedule: ScheduleConfig,
-  from: Date = new Date()
-): string | undefined {
-  switch (schedule.mode) {
-    case 'interval': {
-      const h = Math.round(schedule.intervalHours);
-      if (h < 1 || h > 24) return undefined;
-      const nowHour = from.getHours();
-      const passedBlocks = Math.floor(nowHour / h);
-      let nextHour = (passedBlocks + 1) * h;
-      const next = new Date(from);
-      next.setSeconds(0, 0);
-      next.setMinutes(0);
-      if (nextHour >= 24) {
-        next.setDate(next.getDate() + 1);
-        next.setHours(nextHour % 24);
-      } else {
-        next.setHours(nextHour);
-      }
-      return next.toISOString();
-    }
-    case 'daily': {
-      const parts = schedule.dailyTime.split(':');
-      const hh = parseInt(parts[0], 10);
-      const mm = parseInt(parts[1], 10);
-      if (!Number.isFinite(hh) || !Number.isFinite(mm)) return undefined;
-      const next = new Date(from);
-      next.setHours(hh, mm, 0, 0);
-      if (next <= from) next.setDate(next.getDate() + 1);
-      return next.toISOString();
-    }
-    case 'custom':
-      return undefined; // Would need cron-parser to compute accurately
-  }
-}
-
-/**
  * Returns the expected minimum interval (ms) between scheduled runs.
  * Used to decide whether a catch-up backup is overdue.
  */
@@ -140,11 +102,13 @@ async function runScheduledBackup(): Promise<void> {
   saveState({ lastRunIso });
 
   const freshCfg = loadConfig();
-  nextRunIso = computeNextRun(freshCfg.schedule, runStart) ?? null;
+  // After the run, pull the next-run estimate directly from the task if we have one.
+  refreshNextRun();
 
   console.log('[scheduler] Running scheduled backup...');
+  const progressId = `scheduled-${runStart.getTime()}`;
   emitProgress({
-    id: `scheduled-${runStart.getTime()}`,
+    id: progressId,
     phase: 'start',
     label: 'Scheduled backup starting'
   });
@@ -158,19 +122,70 @@ async function runScheduledBackup(): Promise<void> {
       if (mount.mounted) {
         for (const backup of result.created) {
           await uploadBackup(backup.path).catch((err: Error) =>
-            result.errors.push({ flavor: backup.flavor, message: `Auto-upload failed: ${err.message}` })
+            result.errors.push({
+              flavor: backup.flavor,
+              message: `Auto-upload failed: ${err.message}`
+            })
           );
         }
+      } else {
+        result.errors.push({
+          flavor: 'unknown',
+          message: `Auto-upload skipped: ${mount.message ?? 'share not mounted'}`
+        });
       }
     }
 
     if (result.errors.length > 0) {
+      const summary = result.errors
+        .map((e) => `${e.flavor}: ${e.message}`)
+        .join('; ');
+      lastError = summary;
+      lastErrorIso = new Date().toISOString();
       console.warn('[scheduler] Completed with errors:', result.errors);
+      emitProgress({
+        id: progressId,
+        phase: 'error',
+        label: 'Scheduled backup completed with errors',
+        message: summary
+      });
     } else {
+      lastError = null;
+      lastErrorIso = null;
       console.log(`[scheduler] Done (${result.created.length} backup(s) created).`);
+      emitProgress({
+        id: progressId,
+        phase: 'done',
+        label: `Scheduled backup complete — ${result.created.length} file(s)`,
+        ratio: 1
+      });
     }
   } catch (err) {
+    const msg = (err as Error).message;
+    lastError = msg;
+    lastErrorIso = new Date().toISOString();
     console.error('[scheduler] Backup failed:', err);
+    emitProgress({
+      id: progressId,
+      phase: 'error',
+      label: 'Scheduled backup failed',
+      message: msg
+    });
+  } finally {
+    refreshNextRun();
+  }
+}
+
+function refreshNextRun(): void {
+  if (!task) {
+    nextRunIso = null;
+    return;
+  }
+  try {
+    const next = task.getNextRun();
+    nextRunIso = next ? next.toISOString() : null;
+  } catch {
+    nextRunIso = null;
   }
 }
 
@@ -187,22 +202,48 @@ export function startScheduler(): void {
 
   const expr = scheduleToCron(cfg.schedule);
   if (!expr || !cron.validate(expr)) {
-    console.error('[scheduler] Invalid cron expression:', expr);
+    const msg = `Invalid cron expression: ${expr ?? '(none)'}`;
+    console.error('[scheduler]', msg);
+    lastError = msg;
+    lastErrorIso = new Date().toISOString();
     return;
   }
 
   // Restore persisted state so lastRunIso survives app restarts
   const state = loadState();
   lastRunIso = state.lastRunIso;
-  nextRunIso = computeNextRun(cfg.schedule) ?? null;
+  currentCron = expr;
 
-  console.log(
-    `[scheduler] Starting schedule (${cfg.schedule.mode}): "${expr}" — next run: ${nextRunIso ?? 'unknown'}`
+  console.log(`[scheduler] Starting schedule (${cfg.schedule.mode}): "${expr}"`);
+
+  task = cron.schedule(
+    expr,
+    async () => {
+      await runScheduledBackup().catch(console.error);
+    },
+    { name: 'wow-scheduled-backup' }
   );
 
-  task = cron.schedule(expr, () => {
-    runScheduledBackup().catch(console.error);
-  });
+  // node-cron v4 requires explicit start() — the constructor does NOT auto-start.
+  try {
+    const maybePromise = task.start();
+    if (maybePromise && typeof (maybePromise as Promise<void>).then === 'function') {
+      (maybePromise as Promise<void>).catch((err) =>
+        console.error('[scheduler] start() rejected:', err)
+      );
+    }
+  } catch (err) {
+    console.error('[scheduler] Failed to start task:', err);
+    lastError = (err as Error).message;
+    lastErrorIso = new Date().toISOString();
+    task = null;
+    return;
+  }
+
+  refreshNextRun();
+  console.log(
+    `[scheduler] Started. Next run: ${nextRunIso ?? 'unknown'}`
+  );
 
   // ---------- Catch-up: run immediately if a backup was missed ----------
   const interval = expectedIntervalMs(cfg.schedule);
@@ -225,9 +266,17 @@ export function startScheduler(): void {
 /** Stop the active scheduler, if any. */
 export function stopScheduler(): void {
   if (task) {
-    task.stop();
+    try {
+      const maybePromise = task.stop();
+      if (maybePromise && typeof (maybePromise as Promise<void>).then === 'function') {
+        (maybePromise as Promise<void>).catch(() => {});
+      }
+    } catch (err) {
+      console.error('[scheduler] Error stopping task:', err);
+    }
     task = null;
     nextRunIso = null;
+    currentCron = null;
     console.log('[scheduler] Stopped.');
   }
 }
@@ -245,11 +294,19 @@ export function updateScheduler(): void {
   startScheduler();
 }
 
+/** Run a scheduled backup immediately, outside of the cron schedule. */
+export async function runScheduledBackupNow(): Promise<void> {
+  await runScheduledBackup();
+}
+
 /** Returns the current scheduler status for display in the UI. */
 export function getSchedulerStatus(): SchedulerStatus {
   return {
     running: task !== null,
     lastRunIso: lastRunIso ?? undefined,
-    nextRunIso: nextRunIso ?? undefined
+    nextRunIso: nextRunIso ?? undefined,
+    cronExpression: currentCron ?? undefined,
+    lastError: lastError ?? undefined,
+    lastErrorIso: lastErrorIso ?? undefined
   };
 }

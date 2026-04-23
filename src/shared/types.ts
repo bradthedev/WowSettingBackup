@@ -59,6 +59,12 @@ export interface SchedulerStatus {
   lastRunIso?: string;
   /** ISO string of the next scheduled run, if known. */
   nextRunIso?: string;
+  /** The resolved 5-field cron expression currently in use. */
+  cronExpression?: string;
+  /** Last error message from a scheduled run, if any. */
+  lastError?: string;
+  /** ISO of the last error, if any. */
+  lastErrorIso?: string;
 }
 
 export interface AppConfig {
@@ -82,6 +88,17 @@ export interface AppConfig {
    * to download and restore it automatically.
    */
   autoSyncFromRemote: boolean;
+  /**
+   * How often (in minutes) to poll the remote share for newer backups.
+   * Only used when `autoSyncFromRemote` is enabled.
+   * Allowed values: 5, 15, 30, 60, 120, 240, 720, 1440.
+   */
+  syncIntervalMinutes: number;
+  /**
+   * When enabled, newer remote backups from other machines are downloaded and
+   * restored silently without prompting. Requires `autoSyncFromRemote`.
+   */
+  autoInstallSyncBackup: boolean;
 }
 
 export interface BackupFile {
@@ -191,5 +208,17 @@ export type IpcChannel =
   | 'remote:download'
   | 'restore:fromZip'
   | 'remote:syncApply'
+  | 'remote:syncDismiss'
+  | 'remote:syncAvailable'
+  | 'remote:syncApplied'
   | 'scheduler:getStatus'
+  | 'scheduler:runNow'
+  | 'update:install'
+  | 'update:available'
+  | 'update:progress'
+  | 'update:downloaded'
+  | 'shell:showInFolder'
+  | 'shell:openPath'
+  | 'remote:meta'
+  | 'remote:rebuildIndex'
   | 'progress';

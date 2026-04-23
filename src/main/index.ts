@@ -8,7 +8,7 @@ import { mountShare, mountStatus, unmountShare } from './smb';
 import { downloadBackup, getRemoteMeta, listRemote, uploadBackup } from './remote';
 import { restoreFromZip } from './restore';
 import { rebuildIndex } from './metadata';
-import { startScheduler, updateScheduler, getSchedulerStatus } from './scheduler';
+import { startScheduler, updateScheduler, getSchedulerStatus, runScheduledBackupNow } from './scheduler';
 import { checkRemoteSync, applySyncBackup, dismissSyncBackup } from './sync';
 import { setupTray } from './tray';
 import type { AppConfig, SyncAvailableInfo, WowFlavor } from '../shared/types';
@@ -61,6 +61,8 @@ function registerIpc(): void {
     const cfg = patchConfig(patch);
     // Restart/stop the scheduler whenever settings change
     updateScheduler();
+    // Restart the sync timer so interval changes take effect immediately
+    restartRemoteSyncTimer();
     return cfg;
   });
 
@@ -160,6 +162,10 @@ function registerIpc(): void {
     dismissSyncBackup(info);
   });
 
+  ipcMain.handle('scheduler:runNow', async () => {
+    await runScheduledBackupNow();
+  });
+
   ipcMain.handle('scheduler:getStatus', () => getSchedulerStatus());
 
   ipcMain.handle('update:install', () => {
@@ -185,10 +191,28 @@ let isQuitting = false;
 // Remote-sync checker (SMB share — newer backups from other machines)
 // ---------------------------------------------------------------------------
 
+let syncTimer: NodeJS.Timeout | null = null;
+
 async function runRemoteSyncCheck(): Promise<void> {
   try {
+    const cfg = loadConfig();
+    if (!cfg.autoSyncFromRemote) return;
+
     const items = await checkRemoteSync();
-    if (items.length > 0) {
+    if (items.length === 0) return;
+
+    if (cfg.autoInstallSyncBackup) {
+      // Silently download + restore each newer backup. The renderer still
+      // gets progress events from the download/restore operations.
+      for (const item of items) {
+        try {
+          await applySyncBackup(item);
+          mainWindow?.webContents.send('remote:syncApplied', item);
+        } catch (err) {
+          console.error('[sync] auto-install failed for', item.remoteName, err);
+        }
+      }
+    } else {
       mainWindow?.webContents.send('remote:syncAvailable', items);
     }
   } catch (err) {
@@ -196,11 +220,26 @@ async function runRemoteSyncCheck(): Promise<void> {
   }
 }
 
+/**
+ * Starts (or restarts) the sync timer using the current config's interval.
+ * Called on app ready and whenever config changes.
+ */
+function restartRemoteSyncTimer(): void {
+  if (syncTimer) {
+    clearInterval(syncTimer);
+    syncTimer = null;
+  }
+  const cfg = loadConfig();
+  if (!cfg.autoSyncFromRemote) return;
+  const minutes = cfg.syncIntervalMinutes || 240;
+  const ms = minutes * 60 * 1000;
+  syncTimer = setInterval(() => runRemoteSyncCheck(), ms);
+}
+
 function setupRemoteSync(): void {
-  // First check 10 s after launch (slightly after the update check).
+  // First check 10 s after launch, then on the configured interval.
   setTimeout(() => runRemoteSyncCheck(), 10_000);
-  // Then repeat every 4 hours.
-  setInterval(() => runRemoteSyncCheck(), 4 * 60 * 60 * 1_000);
+  restartRemoteSyncTimer();
 }
 
 // ---------------------------------------------------------------------------
