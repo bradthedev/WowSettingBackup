@@ -4,6 +4,25 @@ All notable changes to WoW Settings Backup are documented here.
 
 ---
 
+## [0.4.2] — 2026-04-23
+
+### Added
+
+- **Catch-up scheduled backups.** If the app was closed when a scheduled
+  backup was due, it now runs a catch-up backup on launch and resumes the
+  normal cadence. Works for all schedule modes — interval, daily, and custom
+  cron. Example: next backup due at 8:00 AM, app reopened at 10:00 AM → runs
+  at 10:00 AM, next run stays at 12:00 PM.
+
+### Changed
+
+- **README** restructured to a standard open-source format with a dedicated
+  Install section pointing at the Releases page for macOS (DMG), Windows
+  (installer / portable zip), and Linux (AppImage). Build-from-source steps
+  moved under a Contributors section.
+
+---
+
 ## [0.4.1] — 2026-04-23
 
 ### Added — Activity dock & background-job visibility

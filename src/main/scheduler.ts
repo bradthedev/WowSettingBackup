@@ -83,14 +83,70 @@ export function scheduleToCron(schedule: ScheduleConfig): string | null {
 
 /**
  * Returns the expected minimum interval (ms) between scheduled runs.
- * Used to decide whether a catch-up backup is overdue.
+ * Used as a fallback to decide whether a catch-up backup is overdue when
+ * the cron engine can't tell us the previous fire time directly.
  */
 function expectedIntervalMs(schedule: ScheduleConfig): number | null {
   switch (schedule.mode) {
     case 'interval': return schedule.intervalHours * 3600 * 1000;
     case 'daily':    return 24 * 3600 * 1000;
-    case 'custom':   return null; // can't determine without cron-parser
+    case 'custom':   return null;
   }
+}
+
+/**
+ * Determines whether a scheduled run was missed while the app was closed.
+ *
+ * Strategy:
+ *   1. Ask node-cron for the *next* scheduled fire time.
+ *   2. If we have a previous run timestamp and the gap between it and "now"
+ *      already exceeds the gap between "now" and the next fire, we've skipped
+ *      at least one occurrence — run a catch-up immediately.
+ *   3. Fall back to the coarse `expectedIntervalMs` check for schedules
+ *      whose next-fire we can't read (should be rare).
+ *
+ * This works for every schedule mode (interval, daily, and custom cron).
+ */
+function isCatchupDue(
+  schedule: ScheduleConfig,
+  lastRun: string | null,
+  activeTask: ScheduledTask | null
+): boolean {
+  const now = Date.now();
+
+  // Ask node-cron for the next scheduled fire time.
+  let nextFireMs: number | null = null;
+  if (activeTask) {
+    try {
+      const next = activeTask.getNextRun();
+      nextFireMs = next ? next.getTime() : null;
+    } catch {
+      nextFireMs = null;
+    }
+  }
+
+  if (lastRun === null) {
+    // Never ran before — always kick off an initial backup so the user gets
+    // their first safety net immediately.
+    return true;
+  }
+
+  const lastMs = new Date(lastRun).getTime();
+  if (!Number.isFinite(lastMs)) return false;
+
+  if (nextFireMs !== null) {
+    // If we've already been closed longer than one cycle (now - lastRun >
+    // nextFire - now), at least one fire was missed.
+    const elapsed = now - lastMs;
+    const untilNext = nextFireMs - now;
+    if (elapsed > untilNext) return true;
+  }
+
+  // Fallback for schedules whose next-fire we couldn't compute.
+  const interval = expectedIntervalMs(schedule);
+  if (interval !== null && now - lastMs > interval) return true;
+
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -260,19 +316,24 @@ export function startScheduler(): void {
   );
 
   // ---------- Catch-up: run immediately if a backup was missed ----------
-  const interval = expectedIntervalMs(cfg.schedule);
-  if (interval !== null && lastRunIso !== null) {
-    const elapsed = Date.now() - new Date(lastRunIso).getTime();
-    if (elapsed > interval) {
-      console.log(
-        `[scheduler] Backup overdue by ${Math.round((elapsed - interval) / 60_000)} min — running catch-up.`
+  // Covers every schedule mode (interval, daily, custom cron). We compare the
+  // last persisted run timestamp to the next cron fire time; if the app was
+  // closed across a scheduled occurrence, we run once now so the user never
+  // loses more than one cycle's worth of protection. The regular cron task
+  // continues to fire on its normal cadence afterward.
+  if (isCatchupDue(cfg.schedule, lastRunIso, task)) {
+    if (lastRunIso === null) {
+      console.log('[scheduler] No previous run found — running initial backup.');
+    } else {
+      const missedMin = Math.round(
+        (Date.now() - new Date(lastRunIso).getTime()) / 60_000
       );
-      // Small delay so the app window and renderer are ready before progress events fire
-      setTimeout(() => runScheduledBackup().catch(console.error), 3000);
+      console.log(
+        `[scheduler] Missed scheduled run (${missedMin} min since last) — running catch-up now.`
+      );
     }
-  } else if (interval !== null && lastRunIso === null) {
-    // First-ever run with the scheduler enabled — kick off immediately
-    console.log('[scheduler] No previous run found — running initial backup.');
+    // Small delay so the app window and renderer are ready before progress
+    // events fire, and so we never block whenReady().
     setTimeout(() => runScheduledBackup().catch(console.error), 3000);
   }
 }
